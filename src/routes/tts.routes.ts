@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { mysqlPool } from '../db.js';
+import { cpaDb } from '../db.js';
 
 export const ttsRouter = Router();
 
@@ -112,12 +112,22 @@ async function streamGoogleTts(text: string, res: any, voiceRate = 1) {
 }
 
 async function getLocationVoiceConfig(locationId: string) {
-  const [rows] = await mysqlPool.query<any[]>(`
-    SELECT tts_provider, recorded_room_type, voice_rate, JSON_UNQUOTE(JSON_EXTRACT(settings_json, '$.google_room_label')) AS google_room_label
-    FROM service_location_config
-    WHERE location_id = ?
-    LIMIT 1`, [locationId]);
-  return rows[0] || null;
+  const row = await cpaDb('service_location_config')
+    .select('tts_provider', 'recorded_room_type', 'voice_rate', 'settings_json')
+    .where({ location_id: locationId })
+    .first();
+  if (!row) return null;
+  return { ...row, google_room_label: parseSettings(row.settings_json).google_room_label || '' };
+}
+
+function parseSettings(value: any) {
+  if (!value) return {};
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
 }
 
 function normalizeVoiceRate(value: any) {

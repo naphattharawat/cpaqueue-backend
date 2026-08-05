@@ -1,0 +1,159 @@
+
+> -----BEGIN CERTIFICATE-----
+  MIIFcjCCBFqgAwIBAgITUgAAAAO
+oRd63zDsbkwAAAAAAAzANBgkqhkiG
+9w0BAQsF
+  ADBCMRUwEwYKCZImiZPyLGQBGRY
+FbG9jYWwxEzARBgoJkiaJk/IsZAEZ
+FgNjcGEx
+  FDASBgNVBAMTC2NwYS1BRC1DQS0
+yMB4XDTI1MTIwNDA0MzQ1MVoXDTI3
+MTIwNDA0
+  MzQ1MVowGjEYMBYGA1UEAxMPbXl
+3ZWIuY3BhLmxvY2FsMIIBIjANBgkq
+hkiG9w0B
+  AQEFAAOCAQ8AMIIBCgKCAQEAw24
+x/snhLHFE9f0kZXTL06R5x3HvfAal
+b25mIaw7
+  0b+9cryQNkmNEARauuDDHOFNPWh
+lwmWu5jMCsLZfn7yiurN6F8atW7K7
+4a01Cli3
+  gp79kcwXrsiMGwVx2ErfPJ18TP4
+DunuoXZ4K9l/vzsw4u6NDaXT+qyn5
+F4chA1N1
+  K02ATaJYsiwwPOaxtcin4KYSdqB
+DhhrwEKajTRUg6lRiKWRRMeG6EN7X
+ruzZQRho
+  DCZkcoNJmRhzBbAu/i21XZQ84ig
+rTrm5CjYJnICsZ9zY2RM0R5dr0X+h
+8n7y6vNR
+  mqwRkbXQK1Hu19pdnjE3Nqu2QvX
+FeSNHmEKTrweXqfDLoQIDAQABo4IC
+hzCCAoMw
+  PAYJKwYBBAGCNxUHBC8wLQYlKwY
+BBAGCNxUIh8uCA5i7UIS9nT6BzPIn
+grS7WYEx
+  huj5Mp6zfgIBZAIBAzAdBgNVHSU
+EFjAUBggrBgEFBQcDAQYIKwYBBQUH
+AwIwDgYD
+  VR0PAQH/BAQDAgWgMCcGCSsGAQQ
+BgjcVCgQaMBgwCgYIKwYBBQUHAwEw
+CgYIKwYB
+  BQUHAwIwHQYDVR0OBBYEFOc+K/T
+iI/ty16E0m89da1SDuvxIMCgGA1Ud
+EQQhMB+C
+  DGFkLmNwYS5sb2NhbIIPbXl3ZWI
+uY3BhLmxvY2FsMB8GA1UdIwQYMBaA
+FFy+6Rws
+  qB/Zfc9bswh/zWek9kPYMIHCBgN
+VHR8EgbowgbcwgbSggbGgga6Ggats
+ZGFwOi8v
+  L0NOPWNwYS1BRC1DQS0yLENOPUF
+ELENOPUNEUCxDTj1QdWJsaWMlMjBL
+ZXklMjBT
+  ZXJ2aWNlcyxDTj1TZXJ2aWNlcyx
+DTj1Db25maWd1cmF0aW9uLERDPWNw
+YSxEQz1s
+  b2NhbD9jZXJ0aWZpY2F0ZVJldm9
+jYXRpb25MaXN0P2Jhc2U/b2JqZWN0
+Q2xhc3M9
+  Y1JMRGlzdHJpYnV0aW9uUG9pbnQ
+wgbsGCCsGAQUFBwEBBIGuMIGrMIGo
+BggrBgEF
+  BQcwAoaBm2xkYXA6Ly8vQ049Y3B
+hLUFELUNBLTIsQ049QUlBLENOPVB1
+YmxpYyUy
+  MEtleSUyMFNlcnZpY2VzLENOPVN
+lcnZpY2VzLENOPUNvbmZpZ3VyYXRp
+b24sREM9
+  Y3BhLERDPWxvY2FsP2NBQ2VydGl
+maWNhdGU/YmFzZT9vYmplY3RDbGFz
+cz1jZXJ0
+  aWZpY2F0aW9uQXV0aG9yaXR5MA0
+GCSqGSIb3DQEBCwUAA4IBAQAELz7T
+HM2eGEVg
+  o743odihUQj3+Y3RMA1P52i+b3D
+BKPBr4qSMGnsFxH42UPQZgfSjdWjc
+cPK2V2We
+  TUK8pKojzlK53kmnN7I+vTtw07T
+yQsHW+6jdmphHgc0amzk/FG1Vr8Jv
+VOzkPzVO
+  k4OhkmIse2khC1LqcX86YazRWEs
+DqON01nilVhXhzvClM8ygmVKcVOhM
+163WNEPI
+  cdPsdFrNl4GemYMsk8RIXtcCtaU
+eh4yMSYQD9lb1L3Tz4q9SPhdO43jy
+aIfjqlRF
+  vOgLo8myqomNVnWFSnZNK/+IGD1
+khOLV+wcARh9iSXXGPIKMnRnD0ZxR
+sAlSXgWW
+  JETghMtb
+> -----END CERTIFICATE-----
+  ---
+  Server certificate
+  subject=CN=myweb.cpa.local
+  issuer=DC=local, DC=cpa, 
+CN=cpa-AD-CA-2
+  ---
+  No client certificate CA 
+names sent
+  Client Certificate Types: 
+RSA sign, DSA sign, ECDSA 
+sign
+  Requested Signature 
+Algorithms: RSA+SHA256:RSA+SH
+A384:RSA+SHA1:ECDSA+SHA256:EC
+DSA+SHA384:ECDSA+SHA1:DSA+SHA
+1:RSA+SHA512:ECDSA+SHA512
+  Shared Requested Signature 
+Algorithms: RSA+SHA256:RSA+SH
+A384:ECDSA+SHA256:ECDSA+SHA38
+4:RSA+SHA512:ECDSA+SHA512
+  Peer signing digest: SHA256
+  Peer signature type: 
+rsa_pkcs1_sha256
+  Peer Temp Key: ECDH, 
+secp384r1, 384 bits
+  ---
+  SSL handshake has read 
+1948 bytes and written 1717 
+bytes
+  Verification error: unable 
+to verify the first 
+certificate
+  ---
+  New, TLSv1.2, Cipher is 
+ECDHE-RSA-AES256-GCM-SHA384
+  Protocol: TLSv1.2
+  Server public key is 2048 
+bit
+  Secure Renegotiation IS 
+supported
+  Compression: NONE
+  Expansion: NONE
+  No ALPN negotiated
+  SSL-Session:
+      Protocol  : TLSv1.2
+      Cipher    : 
+ECDHE-RSA-AES256-GCM-SHA384
+      Session-ID: 1B400000657
+7DE8B18AF546796706321195CC6C7
+BB9EB337E80A220CC513ED90
+      Session-ID-ctx: 
+      Master-Key: 465912FD62F
+A0A8CD2329F79039CA66AE172E5ED
+D7BAA6B0F52566813C4ADF858C538
+97A255C80D0FE2F66B81DD35E5A
+      PSK identity: None
+      PSK identity hint: None
+      SRP username: None
+      Start Time: 1784874312
+      Timeout   : 7200 (sec)
+      Verify return code: 21 
+(unable to verify the first 
+certificate)
+      Extended master 
+secret: yes
+  ---
+
+

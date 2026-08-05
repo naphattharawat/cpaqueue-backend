@@ -1,11 +1,13 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 
 const uploadDir = path.resolve(process.cwd(), '../uploads');
 const indexPath = path.join(uploadDir, 'index.json');
 const locationIndexPath = path.join(uploadDir, 'location-media.json');
 const defaultMedia = {
   file: 'hospital_isometric.png',
+  type: 'image',
   label: 'โรงพยาบาลเจ้าพระยาอภัยภูเบศร',
   duration: 10,
   enabled: 1,
@@ -16,7 +18,7 @@ const defaultMedia = {
 export async function listMedia(locationId = '', manage = false) {
   await fs.mkdir(uploadDir, { recursive: true });
   try {
-    const data = JSON.parse(await fs.readFile(indexPath, 'utf8'));
+    const data = JSON.parse(stripBom(await fs.readFile(indexPath, 'utf8')));
     const items = Array.isArray(data) ? data : [];
     if (manage) return withUsage(items);
     if (!locationId) return items;
@@ -40,6 +42,34 @@ export async function addMedia(item: any) {
   return next;
 }
 
+export async function addYoutubeMedia(input: { url: string; label?: string; duration?: number; enabled?: boolean }) {
+  const parsed = parseYoutubeUrl(input.url);
+  if (!parsed) {
+    const error = new Error('Invalid YouTube URL');
+    (error as any).status = 400;
+    throw error;
+  }
+
+  const current = await listMedia();
+  const file = `youtube_${crypto.createHash('sha1').update(parsed.embedUrl).digest('hex').slice(0, 16)}`;
+  const item = {
+    file,
+    type: 'youtube',
+    source_url: input.url,
+    embed_url: parsed.embedUrl,
+    video_id: parsed.videoId,
+    playlist_id: parsed.playlistId,
+    label: input.label || (parsed.isLive ? 'YouTube Live' : 'YouTube Video'),
+    duration: normalizeDuration(input.duration ?? (parsed.isLive ? 0 : 30)),
+    enabled: input.enabled === false ? 0 : 1,
+  };
+  const next = current.some(media => media.file === file)
+    ? current.map(media => media.file === file ? { ...media, ...item } : media)
+    : [...current, { ...item, order: current.length + 1, uploaded: new Date().toISOString().slice(0, 19).replace('T', ' ') }];
+  await saveMedia(next);
+  return next;
+}
+
 export async function saveMedia(items: any[]) {
   await fs.mkdir(uploadDir, { recursive: true });
   await fs.writeFile(indexPath, JSON.stringify(items, null, 2), 'utf8');
@@ -48,7 +78,7 @@ export async function saveMedia(items: any[]) {
 async function readLocationMedia() {
   await fs.mkdir(uploadDir, { recursive: true });
   try {
-    const data = JSON.parse(await fs.readFile(locationIndexPath, 'utf8'));
+    const data = JSON.parse(stripBom(await fs.readFile(locationIndexPath, 'utf8')));
     return data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, string[]> : {};
   } catch {
     return {};
@@ -102,7 +132,15 @@ export async function setMediaLocations(file: string, locationIds: string[]) {
 export async function updateMedia(items: any[]) {
   const current = await listMedia();
   const byFile = new Map(items.map(i => [i.file, i]));
-  const next = current.map(item => ({ ...item, ...(byFile.get(item.file) ?? {}) }));
+  const next = current.map(item => {
+    const update = byFile.get(item.file) ?? {};
+    return {
+      ...item,
+      label: update.label ?? item.label,
+      duration: normalizeDuration(Object.prototype.hasOwnProperty.call(update, 'duration') ? update.duration : item.duration),
+      enabled: update.enabled ?? item.enabled,
+    };
+  });
   await saveMedia(next);
   return next;
 }
@@ -117,6 +155,7 @@ export async function toggleMedia(file: string) {
 export async function deleteMedia(file: string) {
   const safe = path.basename(file);
   const current = await listMedia();
+  const target = current.find(item => item.file === safe);
   const next = current.filter(item => item.file !== safe);
   await saveMedia(next);
   const locationMedia = await readLocationMedia();
@@ -124,6 +163,61 @@ export async function deleteMedia(file: string) {
     locationMedia[key] = locationMedia[key].filter(item => item !== safe);
   }
   await saveLocationMedia(locationMedia);
-  await fs.rm(path.join(uploadDir, safe), { force: true });
+  if (target?.type !== 'youtube') await fs.rm(path.join(uploadDir, safe), { force: true });
   return next;
+}
+
+function parseYoutubeUrl(value: string) {
+  try {
+    const url = new URL(String(value || '').trim());
+    const host = url.hostname.replace(/^www\./, '').toLowerCase();
+    let videoId = '';
+    const playlistId = url.searchParams.get('list') || '';
+    const isLive = url.pathname.includes('/live') || url.searchParams.get('live') === '1';
+
+    if (host === 'youtu.be') {
+      videoId = url.pathname.split('/').filter(Boolean)[0] || '';
+    } else if (host.endsWith('youtube.com')) {
+      if (url.pathname === '/watch') videoId = url.searchParams.get('v') || '';
+      else if (url.pathname.startsWith('/embed/')) videoId = url.pathname.split('/')[2] || '';
+      else if (url.pathname.startsWith('/live/')) videoId = url.pathname.split('/')[2] || '';
+      else if (url.pathname.startsWith('/shorts/')) videoId = url.pathname.split('/')[2] || '';
+    }
+
+    if (!videoId && !playlistId) return null;
+    const params = new URLSearchParams({
+      autoplay: '1',
+      mute: '1',
+      controls: '0',
+      rel: '0',
+      modestbranding: '1',
+      playsinline: '1',
+      disablekb: '1',
+      fs: '0',
+      iv_load_policy: '3',
+      cc_load_policy: '0',
+    });
+
+    if (playlistId && !videoId) {
+      params.set('listType', 'playlist');
+      params.set('list', playlistId);
+      return { embedUrl: `https://www.youtube.com/embed/videoseries?${params.toString()}`, videoId, playlistId, isLive };
+    }
+
+    if (playlistId) params.set('list', playlistId);
+    return { embedUrl: `https://www.youtube.com/embed/${encodeURIComponent(videoId)}?${params.toString()}`, videoId, playlistId, isLive };
+  } catch {
+    return null;
+  }
+}
+
+function stripBom(value: string) {
+  return value.charCodeAt(0) === 0xfeff ? value.slice(1) : value;
+}
+
+function normalizeDuration(value: any) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 10;
+  if (n <= 0) return 0;
+  return Math.max(3, Math.round(n));
 }

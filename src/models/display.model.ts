@@ -1,77 +1,77 @@
-import { mysqlPool, pgPool } from '../db.js';
+import { cpaDb, hospitalDb } from '../db.js';
 
 export async function getDisplayData(locationId: string, roomId = '', doctorCode = '') {
-  const rooms = (await pgPool.query(
-    `SELECT opd_qs_room_id, opd_qs_room_name, opd_qs_room_number, current_queue
-     FROM opd_qs_room WHERE opd_qs_location_id = $1 AND room_active = 'Y'
-     ORDER BY display_order ASC, opd_qs_room_name ASC`, [locationId])).rows;
+  const rooms = await hospitalDb('opd_qs_room')
+    .select('opd_qs_room_id', 'opd_qs_room_name', 'opd_qs_room_number', 'current_queue')
+    .where({ opd_qs_location_id: locationId, room_active: 'Y' })
+    .orderBy('display_order', 'asc')
+    .orderBy('opd_qs_room_name', 'asc');
 
   let roomInfo: any = null;
   let roomDoctorCode = '';
   if (roomId) {
-    roomInfo = (await pgPool.query(`
-      SELECT r.opd_qs_room_name, r.opd_qs_room_number, r.doctor_code, d.name AS doctor_name,
-        c.opd_qs_location_name, CONCAT('ห้องตรวจเบอร์ ', r.opd_qs_room_number) AS display_location_name
-      FROM opd_qs_room r
-      LEFT JOIN doctor d ON d.code = COALESCE($2, r.doctor_code)
-      LEFT JOIN opd_qs_location c ON r.opd_qs_location_id = c.opd_qs_location_id
-      WHERE r.opd_qs_room_id = $1 LIMIT 1`, [roomId, doctorCode || null])).rows[0] ?? null;
+    roomInfo = await hospitalDb('opd_qs_room as r')
+      .select('r.opd_qs_room_name', 'r.opd_qs_room_number', 'r.doctor_code', { doctor_name: 'd.name' }, 'c.opd_qs_location_name')
+      .leftJoin('doctor as d', 'd.code', 'r.doctor_code')
+      .leftJoin('opd_qs_location as c', 'r.opd_qs_location_id', 'c.opd_qs_location_id')
+      .where('r.opd_qs_room_id', roomId)
+      .first();
+    if (roomInfo) roomInfo.display_location_name = `ห้องตรวจเบอร์ ${roomInfo.opd_qs_room_number || ''}`.trim();
     roomDoctorCode = doctorCode || roomInfo?.doctor_code || '';
   }
 
-  const activeLogs = roomId ? (await mysqlPool.query(
-    `SELECT call_id, slot_id, call_datetime FROM opd_qs_call
-     WHERE room_id = ? AND call_status = 'N' AND DATE(call_datetime) = CURDATE()
-     ORDER BY call_datetime DESC LIMIT 10`, [roomId]))[0] as any[] : [];
-  const activeList = await slotDetails(activeLogs.reverse().map(l => l.slot_id), activeLogs);
+  const activeLogs = roomId ? await cpaDb('opd_qs_call')
+    .select('call_id', 'slot_id', 'call_datetime')
+    .where({ room_id: roomId, call_status: 'N' })
+    .whereBetween('call_datetime', todayRange())
+    .orderBy('call_datetime', 'desc')
+    .limit(10) : [];
+  const activeList = await slotDetails(activeLogs.slice().reverse().map((l: any) => l.slot_id), activeLogs.slice().reverse());
   const active = activeList.at(-1) ?? null;
 
-  const holdLogs = roomId ? (await mysqlPool.query(
-    `SELECT slot_id, queue_no, patient_name FROM opd_qs_call
-     WHERE room_id = ? AND call_status = 'W' AND DATE(call_datetime) = CURDATE()
-     ORDER BY call_datetime DESC`, [roomId]))[0] as any[] : [];
-  const holdDetails = await slotDetails(holdLogs.map(h => h.slot_id), []);
+  const holdLogs = roomId ? await cpaDb('opd_qs_call')
+    .select('slot_id', 'queue_no', 'patient_name')
+    .where({ room_id: roomId, call_status: 'W' })
+    .whereBetween('call_datetime', todayRange())
+    .orderBy('call_datetime', 'desc') : [];
+  const holdDetails = await slotDetails(holdLogs.map((h: any) => h.slot_id), []);
   const holdMap = new Map(holdDetails.map((h: any) => [String(h.opd_qs_slot_id), h]));
-  const hold_queues = holdLogs.map(h => ({ slot_id: h.slot_id, queue_slot_number: holdMap.get(String(h.slot_id))?.queue_slot_number ?? h.queue_no, oqueue: holdMap.get(String(h.slot_id))?.oqueue ?? null, patient_name: h.patient_name }));
+  const hold_queues = holdLogs.map((h: any) => ({ slot_id: h.slot_id, queue_slot_number: holdMap.get(String(h.slot_id))?.queue_slot_number ?? h.queue_no, oqueue: holdMap.get(String(h.slot_id))?.oqueue ?? null, patient_name: h.patient_name }));
 
-  const callLogs = roomId ? (await mysqlPool.query(`SELECT slot_id, call_status FROM opd_qs_call WHERE room_id = ? AND DATE(call_datetime) = CURDATE()`, [roomId]))[0] as any[] : [];
-  const excluded = new Set(callLogs.filter(l => ['N', 'W'].includes(l.call_status)).map(l => String(l.slot_id)));
-  const called = callLogs.filter(l => l.call_status === 'N').length;
-  const params: unknown[] = [];
-  let where = 'a.schedule_date = CURRENT_DATE';
-  if (doctorCode && roomId) {
-    params.push(doctorCode, roomId);
-    where += ` AND a.doctor_code = $1 AND a.opd_qs_room_id = $2`;
-  } else if (roomDoctorCode) {
-    params.push(roomDoctorCode);
-    where += ` AND a.doctor_code = $1`;
-  } else if (roomId) {
-    params.push(roomId);
-    where += ` AND a.opd_qs_room_id = $1`;
-  } else {
-    params.push(locationId);
-    where += ` AND a.opd_qs_room_id IN (SELECT opd_qs_room_id FROM opd_qs_room WHERE opd_qs_location_id = $1)`;
+  const callLogs = roomId ? await cpaDb('opd_qs_call')
+    .select('slot_id', 'call_status')
+    .where('room_id', roomId)
+    .whereBetween('call_datetime', todayRange()) : [];
+  const excluded = new Set(callLogs.filter((l: any) => ['N', 'W'].includes(l.call_status)).map((l: any) => String(l.slot_id)));
+  const called = callLogs.filter((l: any) => l.call_status === 'N').length;
+
+  const slotQuery = hospitalDb('opd_qs_slot as a')
+    .select('a.opd_qs_slot_id', 'a.queue_slot_number', 'o.oqueue', 'a.start_time', 'p.pname', 'p.fname', 'p.lname')
+    .leftJoin('ovst as o', 'a.vn', 'o.vn')
+    .leftJoin('patient as p', 'o.hn', 'p.hn')
+    .where('a.schedule_date', today())
+    .orderBy('a.queue_slot_number_int', 'asc')
+    .orderBy('a.start_time', 'asc');
+  if (doctorCode && roomId) slotQuery.where('a.doctor_code', doctorCode).where('a.opd_qs_room_id', roomId);
+  else if (roomDoctorCode) slotQuery.where('a.doctor_code', roomDoctorCode);
+  else if (roomId) slotQuery.where('a.opd_qs_room_id', roomId);
+  else {
+    const roomIds = rooms.map((r: any) => r.opd_qs_room_id);
+    if (roomIds.length) slotQuery.whereIn('a.opd_qs_room_id', roomIds);
   }
-  const allSlots = (await pgPool.query(`
-    SELECT a.opd_qs_slot_id, a.queue_slot_number, o.oqueue, a.start_time, CONCAT('คุณ', p.fname, ' ', p.lname) AS patient_name
-    FROM opd_qs_slot a
-    LEFT JOIN ovst o ON a.vn = o.vn
-    LEFT JOIN patient p ON o.hn = p.hn
-    WHERE ${where}
-    ORDER BY a.queue_slot_number_int ASC, a.start_time ASC`, params)).rows;
+  const allSlots = (await slotQuery).map(withPatientName);
   const waitingSlots = allSlots.filter((s: any) => !excluded.has(String(s.opd_qs_slot_id)));
-  return { status: 'success', active, active_list: activeList, hold_queues, next_queues: waitingSlots.slice(0, 5), remaining_count: Math.max(0, waitingSlots.length - 5), rooms, room_info: roomInfo, waiting: waitingSlots.length, called };
+  return { status: 'success', active, active_list: activeList, hold_queues, next_queues: waitingSlots.slice(0, 5), remaining_count: Math.max(0, waitingSlots.length - 5), rooms, room_info: roomInfo, waiting: waitingSlots.length, called, call_repeat_count: await callRepeatCount(locationId) };
 }
 
 async function slotDetails(slotIds: string[], logs: any[]) {
   if (!slotIds.length) return [];
-  const { rows } = await pgPool.query(`
-    SELECT a.opd_qs_slot_id, a.queue_slot_number, o.oqueue, a.start_time, CONCAT(p.pname, p.fname, ' ', p.lname) AS patient_name
-    FROM opd_qs_slot a
-    LEFT JOIN ovst o ON a.vn = o.vn
-    LEFT JOIN patient p ON o.hn = p.hn
-    WHERE a.opd_qs_slot_id = ANY($1)`, [slotIds.map(Number)]);
-  const map = new Map(rows.map((r: any) => [String(r.opd_qs_slot_id), r]));
+  const rows = await hospitalDb('opd_qs_slot as a')
+    .select('a.opd_qs_slot_id', 'a.queue_slot_number', 'o.oqueue', 'a.start_time', 'p.pname', 'p.fname', 'p.lname')
+    .leftJoin('ovst as o', 'a.vn', 'o.vn')
+    .leftJoin('patient as p', 'o.hn', 'p.hn')
+    .whereIn('a.opd_qs_slot_id', slotIds.map(Number));
+  const map = new Map(rows.map((r: any) => [String(r.opd_qs_slot_id), withPatientName(r)]));
   return slotIds.map((id, i) => {
     const row = map.get(String(id));
     return row ? { ...(row as object), call_id: logs[i]?.call_id, call_datetime: logs[i]?.call_datetime } : null;
@@ -80,12 +80,10 @@ async function slotDetails(slotIds: string[], logs: any[]) {
 
 export async function getMultiDisplayData(roomIds: number[]) {
   if (!roomIds.length) return { status: 'success', rooms_data: [], called_list: [] };
-  const allCalls = (await mysqlPool.query(
-    `SELECT call_id, slot_id, room_id, call_status, queue_no, call_datetime, hn, patient_name
-     FROM opd_qs_call
-     WHERE DATE(call_datetime) = CURDATE()
-     ORDER BY call_datetime DESC`,
-  ))[0] as any[];
+  const allCalls = await cpaDb('opd_qs_call')
+    .select('call_id', 'slot_id', 'room_id', 'call_status', 'queue_no', 'call_datetime', 'hn', 'patient_name')
+    .whereBetween('call_datetime', todayRange())
+    .orderBy('call_datetime', 'desc');
 
   const activeByRoom = new Map<string, any>();
   const excludedSlotIds = new Set<string>();
@@ -100,34 +98,30 @@ export async function getMultiDisplayData(roomIds: number[]) {
     if (['N', 'W'].includes(call.call_status)) excludedSlotIds.add(sid);
   }
 
+  const roomsInfo = await hospitalDb('opd_qs_room as r')
+    .select('r.opd_qs_room_id', 'r.opd_qs_room_name', 'r.opd_qs_room_number', 'r.opd_qs_location_id', 'r.doctor_code', { doctor_name: 'd.name' }, { location_name: 'l.opd_qs_location_name' })
+    .leftJoin('doctor as d', 'r.doctor_code', 'd.code')
+    .leftJoin('opd_qs_location as l', 'r.opd_qs_location_id', 'l.opd_qs_location_id')
+    .whereIn('r.opd_qs_room_id', roomIds);
+  const roomMap = new Map(roomsInfo.map((r: any) => [String(r.opd_qs_room_id), r]));
+
   const roomsData: any[] = [];
   for (const roomId of roomIds) {
-    const roomInfo = (await pgPool.query(`
-      SELECT r.opd_qs_room_id, r.opd_qs_room_name, r.opd_qs_room_number, r.doctor_code,
-        d.name AS doctor_name, l.opd_qs_location_name AS location_name
-      FROM opd_qs_room r
-      LEFT JOIN doctor d ON r.doctor_code = d.code
-      LEFT JOIN opd_qs_location l ON r.opd_qs_location_id = l.opd_qs_location_id
-      WHERE r.opd_qs_room_id = $1 LIMIT 1`, [roomId])).rows[0];
+    const roomInfo = roomMap.get(String(roomId));
     if (!roomInfo) continue;
-
     const activeLog = activeByRoom.get(String(roomId));
     const active = activeLog ? (await slotDetails([activeLog.slot_id], [activeLog])).at(0) ?? null : null;
-
-    const docToday = (await pgPool.query(
-      `SELECT DISTINCT doctor_code FROM opd_qs_slot WHERE opd_qs_room_id = $1 AND schedule_date = CURRENT_DATE LIMIT 1`,
-      [roomId],
-    )).rows[0]?.doctor_code;
-    const params: unknown[] = [roomId];
-    const docSql = docToday ? 'AND a.doctor_code = $2' : '';
-    if (docToday) params.push(docToday);
-    const allSlots = (await pgPool.query(`
-      SELECT a.opd_qs_slot_id, a.queue_slot_number, o.oqueue, a.start_time, CONCAT('คุณ', p.fname, ' ', p.lname) AS patient_name
-      FROM opd_qs_slot a
-      LEFT JOIN ovst o ON a.vn = o.vn
-      LEFT JOIN patient p ON o.hn = p.hn
-      WHERE a.schedule_date = CURRENT_DATE AND a.opd_qs_room_id = $1 ${docSql}
-      ORDER BY a.queue_slot_number_int ASC, a.start_time ASC`, params)).rows;
+    const docToday = (await hospitalDb('opd_qs_slot').distinct('doctor_code').where('opd_qs_room_id', roomId).where('schedule_date', today()).first())?.doctor_code;
+    const slotQuery = hospitalDb('opd_qs_slot as a')
+      .select('a.opd_qs_slot_id', 'a.queue_slot_number', 'o.oqueue', 'a.start_time', 'p.pname', 'p.fname', 'p.lname')
+      .leftJoin('ovst as o', 'a.vn', 'o.vn')
+      .leftJoin('patient as p', 'o.hn', 'p.hn')
+      .where('a.schedule_date', today())
+      .where('a.opd_qs_room_id', roomId)
+      .orderBy('a.queue_slot_number_int', 'asc')
+      .orderBy('a.start_time', 'asc');
+    if (docToday) slotQuery.where('a.doctor_code', docToday);
+    const allSlots = (await slotQuery).map(withPatientName);
 
     roomsData.push({
       room_id: roomId,
@@ -155,5 +149,31 @@ export async function getMultiDisplayData(roomIds: number[]) {
     hn: c.hn,
   }));
 
-  return { status: 'success', rooms_data: roomsData, called_list };
+  const locationId = roomsInfo[0]?.opd_qs_location_id || '';
+  return { status: 'success', rooms_data: roomsData, called_list, call_repeat_count: await callRepeatCount(locationId) };
+}
+
+function withPatientName(row: any) {
+  const prefix = row.pname || 'คุณ';
+  const name = `${row.fname || ''} ${row.lname || ''}`.trim();
+  return { ...row, patient_name: name ? `${prefix}${name}` : '' };
+}
+
+function today() {
+  return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+function todayRange(): [Date, Date] {
+  const day = today();
+  return [new Date(`${day}T00:00:00`), new Date(`${day}T23:59:59`)];
+}
+
+async function callRepeatCount(locationId: string | number) {
+  if (!locationId) return 1;
+  const row = await cpaDb('service_location_config')
+    .select('*')
+    .where({ location_id: String(locationId) })
+    .first();
+  const n = Math.round(Number(row?.call_repeat_count || 1));
+  return Number.isFinite(n) ? Math.min(5, Math.max(1, n)) : 1;
 }

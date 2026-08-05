@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { mysqlPool, pgPool } from '../db.js';
+import { cpaDb, hospitalDb } from '../db.js';
 import { listAudioFiles } from './audio.model.js';
 
 export const voiceTypes = [
@@ -22,15 +22,13 @@ export const voiceTypes = [
 ];
 
 export async function listLocationConfigs() {
-  const { rows: locations } = await pgPool.query(`
-    SELECT opd_qs_location_id, opd_qs_location_name
-    FROM opd_qs_location
-    ORDER BY opd_qs_location_name ASC`);
-  const [configs] = await mysqlPool.query<any[]>(`SELECT * FROM service_location_config`);
-  const [devices] = await mysqlPool.query<any[]>(`
-    SELECT device_id, device_name, device_type, location_id, room_ids, allowed_ips, active, last_seen_at, last_seen_ip, created_at, updated_at
-    FROM display_devices
-    ORDER BY device_id DESC`);
+  const locations = await hospitalDb('opd_qs_location')
+    .select('opd_qs_location_id', 'opd_qs_location_name')
+    .orderBy('opd_qs_location_name', 'asc');
+  const configs = await cpaDb('service_location_config').select('*');
+  const devices = await cpaDb('display_devices')
+    .select('device_id', 'device_name', 'device_type', 'location_id', 'room_ids', 'allowed_ips', 'active', 'last_seen_at', 'last_seen_ip', 'created_at', 'updated_at')
+    .orderBy('device_id', 'desc');
   const configByLocation = new Map(configs.map(row => [String(row.location_id), row]));
   const devicesByLocation = new Map<string, any[]>();
   for (const device of devices) {
@@ -47,6 +45,7 @@ export async function listLocationConfigs() {
       tts_provider: config.tts_provider || 'google',
       recorded_room_type: config.recorded_room_type || 'doctor_room',
       voice_rate: Number(config.voice_rate || 1),
+      call_repeat_count: normalizeCallRepeatCount(config.call_repeat_count),
       settings: parseSettings(config.settings_json),
       google_room_label: parseSettings(config.settings_json).google_room_label || 'ห้องตรวจ',
       default_room_ids: splitCsv(config.default_room_ids || ''),
@@ -57,26 +56,17 @@ export async function listLocationConfigs() {
 
 export async function updateLocationConfig(locationId: string, body: any) {
   const recordedRoomType = await normalizeRecordedRoomType(body.recorded_room_type);
-  await mysqlPool.query(`
-    INSERT INTO service_location_config
-      (location_id, display_name, tts_provider, recorded_room_type, voice_rate, default_room_ids, settings_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON DUPLICATE KEY UPDATE
-      display_name = VALUES(display_name),
-      tts_provider = VALUES(tts_provider),
-      recorded_room_type = VALUES(recorded_room_type),
-      voice_rate = VALUES(voice_rate),
-      default_room_ids = VALUES(default_room_ids),
-      settings_json = VALUES(settings_json)`,
-    [
-      locationId,
-      String(body.display_name || ''),
-      body.tts_provider === 'recorded' ? 'recorded' : 'google',
-      recordedRoomType,
-      normalizeVoiceRate(body.voice_rate),
-      Array.isArray(body.default_room_ids) ? body.default_room_ids.join(',') : String(body.default_room_ids || ''),
-      JSON.stringify({ ...(body.settings || {}), google_room_label: body.google_room_label || body.settings?.google_room_label || '' }),
-    ]);
+  const payload = {
+    location_id: locationId,
+    display_name: String(body.display_name || ''),
+    tts_provider: body.tts_provider === 'recorded' ? 'recorded' : 'google',
+    recorded_room_type: recordedRoomType,
+    voice_rate: normalizeVoiceRate(body.voice_rate),
+    call_repeat_count: normalizeCallRepeatCount(body.call_repeat_count),
+    default_room_ids: Array.isArray(body.default_room_ids) ? body.default_room_ids.join(',') : String(body.default_room_ids || ''),
+    settings_json: JSON.stringify({ ...(body.settings || {}), google_room_label: body.google_room_label || body.settings?.google_room_label || '' }),
+  };
+  await cpaDb('service_location_config').insert(payload).onConflict('location_id').merge(payload);
   return getLocationConfig(locationId);
 }
 
@@ -94,66 +84,51 @@ export async function getLocationConfig(locationId: string) {
 export async function createDisplayDevice(locationId: string, body: any) {
   const token = `dq_${crypto.randomBytes(32).toString('hex')}`;
   const tokenHash = hashToken(token);
-  const [result] = await mysqlPool.query<any>(`
-    INSERT INTO display_devices
-      (device_name, device_type, location_id, room_ids, token_hash, allowed_ips, active, settings_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      String(body.device_name || 'Display device'),
-      body.device_type === 'single' ? 'single' : 'multi',
-      locationId,
-      Array.isArray(body.room_ids) ? body.room_ids.join(',') : String(body.room_ids || ''),
-      tokenHash,
-      Array.isArray(body.allowed_ips) ? body.allowed_ips.join(',') : String(body.allowed_ips || ''),
-      body.active === false ? 0 : 1,
-      JSON.stringify(body.settings || {}),
-    ]);
-  return { ...(await getDevice(result.insertId)), setup_token: token };
+  const [deviceId] = await cpaDb('display_devices').insert({
+    device_name: String(body.device_name || 'Display device'),
+    device_type: body.device_type === 'single' ? 'single' : 'multi',
+    location_id: locationId,
+    room_ids: Array.isArray(body.room_ids) ? body.room_ids.join(',') : String(body.room_ids || ''),
+    token_hash: tokenHash,
+    allowed_ips: Array.isArray(body.allowed_ips) ? body.allowed_ips.join(',') : String(body.allowed_ips || ''),
+    active: body.active === false ? 0 : 1,
+    settings_json: JSON.stringify(body.settings || {}),
+  });
+  return { ...(await getDevice(deviceId)), setup_token: token };
 }
 
 export async function updateDisplayDevice(deviceId: string, body: any) {
-  await mysqlPool.query(`
-    UPDATE display_devices SET
-      device_name = ?,
-      device_type = ?,
-      room_ids = ?,
-      allowed_ips = ?,
-      active = ?,
-      settings_json = ?
-    WHERE device_id = ?`,
-    [
-      String(body.device_name || 'Display device'),
-      body.device_type === 'single' ? 'single' : 'multi',
-      Array.isArray(body.room_ids) ? body.room_ids.join(',') : String(body.room_ids || ''),
-      Array.isArray(body.allowed_ips) ? body.allowed_ips.join(',') : String(body.allowed_ips || ''),
-      body.active === false ? 0 : 1,
-      JSON.stringify(body.settings || {}),
-      deviceId,
-    ]);
+  await cpaDb('display_devices').where({ device_id: deviceId }).update({
+    device_name: String(body.device_name || 'Display device'),
+    device_type: body.device_type === 'single' ? 'single' : 'multi',
+    room_ids: Array.isArray(body.room_ids) ? body.room_ids.join(',') : String(body.room_ids || ''),
+    allowed_ips: Array.isArray(body.allowed_ips) ? body.allowed_ips.join(',') : String(body.allowed_ips || ''),
+    active: body.active === false ? 0 : 1,
+    settings_json: JSON.stringify(body.settings || {}),
+  });
   return getDevice(deviceId);
 }
 
 export async function rotateDisplayDeviceToken(deviceId: string) {
   const token = `dq_${crypto.randomBytes(32).toString('hex')}`;
-  await mysqlPool.query(`UPDATE display_devices SET token_hash = ? WHERE device_id = ?`, [hashToken(token), deviceId]);
+  await cpaDb('display_devices').where({ device_id: deviceId }).update({ token_hash: hashToken(token) });
   return { ...(await getDevice(deviceId)), setup_token: token };
 }
 
 export async function deleteDisplayDevice(deviceId: string) {
-  await mysqlPool.query(`DELETE FROM display_devices WHERE device_id = ?`, [deviceId]);
+  await cpaDb('display_devices').where({ device_id: deviceId }).delete();
   return { deleted: true };
 }
 
 export async function resolveDisplayDevice(token: string, ip = '') {
   const tokenHash = hashToken(token);
-  const [rows] = await mysqlPool.query<any[]>(`
-    SELECT device_id, device_name, device_type, location_id, room_ids, allowed_ips, active, last_seen_at, last_seen_ip, created_at, updated_at
-    FROM display_devices
-    WHERE token_hash = ?
-    LIMIT 1`, [tokenHash]);
-  if (!rows[0] || !rows[0].active) return null;
+  const row = await cpaDb('display_devices')
+    .select('device_id', 'device_name', 'device_type', 'location_id', 'room_ids', 'allowed_ips', 'active', 'last_seen_at', 'last_seen_ip', 'created_at', 'updated_at')
+    .where({ token_hash: tokenHash })
+    .first();
+  if (!row || !row.active) return null;
 
-  const device = normalizeDevice(rows[0]);
+  const device = normalizeDevice(row);
   // IP allow-list is intentionally disabled for now. Keep this block for future hardening.
   // if (device.allowed_ips.length && !device.allowed_ips.includes(normalizeIp(ip))) {
   //   const error: any = new Error('IP not allowed');
@@ -161,7 +136,7 @@ export async function resolveDisplayDevice(token: string, ip = '') {
   //   throw error;
   // }
 
-  await mysqlPool.query(`UPDATE display_devices SET last_seen_at = NOW(), last_seen_ip = ? WHERE device_id = ?`, [normalizeIp(ip), device.device_id]);
+  await cpaDb('display_devices').where({ device_id: device.device_id }).update({ last_seen_at: new Date(), last_seen_ip: normalizeIp(ip) });
   return device;
 }
 
@@ -170,10 +145,11 @@ export function hashToken(token: string) {
 }
 
 async function getDevice(deviceId: string | number) {
-  const [rows] = await mysqlPool.query<any[]>(`
-    SELECT device_id, device_name, device_type, location_id, room_ids, allowed_ips, active, last_seen_at, last_seen_ip, created_at, updated_at
-    FROM display_devices WHERE device_id = ?`, [deviceId]);
-  return rows[0] ? normalizeDevice(rows[0]) : null;
+  const row = await cpaDb('display_devices')
+    .select('device_id', 'device_name', 'device_type', 'location_id', 'room_ids', 'allowed_ips', 'active', 'last_seen_at', 'last_seen_ip', 'created_at', 'updated_at')
+    .where({ device_id: deviceId })
+    .first();
+  return row ? normalizeDevice(row) : null;
 }
 
 function normalizeDevice(row: any) {
@@ -207,4 +183,10 @@ function normalizeVoiceRate(value: any) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 1;
   return Math.min(1.5, Math.max(0.7, n));
+}
+
+function normalizeCallRepeatCount(value: any) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(5, Math.max(1, n));
 }
