@@ -5,6 +5,7 @@ package-lock.json
 dist/
 build/
 coverage/
+uploads/
 
 # Logs
 npm-debug.log*
