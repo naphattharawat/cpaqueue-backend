@@ -1,0 +1,308 @@
+{
+  "0.mp3": {
+    "label": "0"
+  },
+  "1.mp3": {
+    "label": "1"
+  },
+  "10.mp3": {
+    "label": "10"
+  },
+  "100.mp3": {
+    "label": "100"
+  },
+  "1000.mp3": {
+    "label": "1000"
+  },
+  "10000.mp3": {
+    "label": "10000"
+  },
+  "11.mp3": {
+    "label": "11"
+  },
+  "2.mp3": {
+    "label": "2"
+  },
+  "20.mp3": {
+    "label": "20"
+  },
+  "3.mp3": {
+    "label": "3"
+  },
+  "4.mp3": {
+    "label": "4"
+  },
+  "5.mp3": {
+    "label": "5"
+  },
+  "6.mp3": {
+    "label": "6"
+  },
+  "7.mp3": {
+    "label": "7"
+  },
+  "8.mp3": {
+    "label": "8"
+  },
+  "9.mp3": {
+    "label": "9"
+  },
+  "ก.mp3": {
+    "label": "ก"
+  },
+  "ข.mp3": {
+    "label": "ข"
+  },
+  "ฃ.mp3": {
+    "label": "ฃ"
+  },
+  "ค.mp3": {
+    "label": "ค"
+  },
+  "ฅ.mp3": {
+    "label": "ฅ"
+  },
+  "ฆ.mp3": {
+    "label": "ฆ"
+  },
+  "ง.mp3": {
+    "label": "ง"
+  },
+  "จ.mp3": {
+    "label": "จ"
+  },
+  "ฉ.mp3": {
+    "label": "ฉ"
+  },
+  "ช.mp3": {
+    "label": "ช"
+  },
+  "ซ.mp3": {
+    "label": "ซ"
+  },
+  "ฌ.mp3": {
+    "label": "ฌ"
+  },
+  "ญ.mp3": {
+    "label": "ญ"
+  },
+  "ฎ.mp3": {
+    "label": "ฎ"
+  },
+  "ฏ.mp3": {
+    "label": "ฏ"
+  },
+  "ฐ.mp3": {
+    "label": "ฐ"
+  },
+  "ฑ.mp3": {
+    "label": "ฑ"
+  },
+  "ฒ.mp3": {
+    "label": "ฒ"
+  },
+  "ณ.mp3": {
+    "label": "ณ"
+  },
+  "ด.mp3": {
+    "label": "ด"
+  },
+  "ต.mp3": {
+    "label": "ต"
+  },
+  "ถ.mp3": {
+    "label": "ถ"
+  },
+  "ท.mp3": {
+    "label": "ท"
+  },
+  "ธ.mp3": {
+    "label": "ธ"
+  },
+  "น.mp3": {
+    "label": "น"
+  },
+  "บ.mp3": {
+    "label": "บ"
+  },
+  "ป.mp3": {
+    "label": "ป"
+  },
+  "ผ.mp3": {
+    "label": "ผ"
+  },
+  "ฝ.mp3": {
+    "label": "ฝ"
+  },
+  "พ.mp3": {
+    "label": "พ"
+  },
+  "ฟ.mp3": {
+    "label": "ฟ"
+  },
+  "ภ.mp3": {
+    "label": "ภ"
+  },
+  "ม.mp3": {
+    "label": "ม"
+  },
+  "ย.mp3": {
+    "label": "ย"
+  },
+  "ร.mp3": {
+    "label": "ร"
+  },
+  "ล.mp3": {
+    "label": "ล"
+  },
+  "ว.mp3": {
+    "label": "ว"
+  },
+  "ศ.mp3": {
+    "label": "ศ"
+  },
+  "ษ.mp3": {
+    "label": "ษ"
+  },
+  "ส.mp3": {
+    "label": "ส"
+  },
+  "ห.mp3": {
+    "label": "ห"
+  },
+  "ฬ.mp3": {
+    "label": "ฬ"
+  },
+  "อ.mp3": {
+    "label": "อ"
+  },
+  "ฮ.mp3": {
+    "label": "ฮ"
+  },
+  "A.mp3": {
+    "label": "A"
+  },
+  "B.mp3": {
+    "label": "B"
+  },
+  "C.mp3": {
+    "label": "C"
+  },
+  "cashier.mp3": {
+    "label": "ที่ช่องการเงิน"
+  },
+  "channel.mp3": {
+    "label": "ที่ช่องบริการ"
+  },
+  "couter.mp3": {
+    "label": "ที่เคาเตอร์"
+  },
+  "D.mp3": {
+    "label": "D"
+  },
+  "doctor_room.mp3": {
+    "label": "ที่ห้องตรวจ"
+  },
+  "E.mp3": {
+    "label": "E"
+  },
+  "F.mp3": {
+    "label": "F"
+  },
+  "G.mp3": {
+    "label": "G"
+  },
+  "H.mp3": {
+    "label": "H"
+  },
+  "I.mp3": {
+    "label": "I"
+  },
+  "interview-point.mp3": {
+    "label": "ที่จัดซักประวัติ"
+  },
+  "interview-table.mp3": {
+    "label": "ที่โต๊ะซักประวัติ"
+  },
+  "J.mp3": {
+    "label": "J"
+  },
+  "K.mp3": {
+    "label": "K"
+  },
+  "ka.mp3": {
+    "label": "ค่ะ"
+  },
+  "L.mp3": {
+    "label": "L"
+  },
+  "M.mp3": {
+    "label": "M"
+  },
+  "N.mp3": {
+    "label": "N"
+  },
+  "number.mp3": {
+    "label": "number"
+  },
+  "O.mp3": {
+    "label": "O"
+  },
+  "P.mp3": {
+    "label": "P"
+  },
+  "pay-cashier.mp3": {
+    "label": "ที่ช่องจ่ายเงิน"
+  },
+  "pay-drug.mp3": {
+    "label": "ที่ช่องจ่ายยา"
+  },
+  "please.mp3": {
+    "label": "เชิญหมายเลข"
+  },
+  "Q.mp3": {
+    "label": "Q"
+  },
+  "R.mp3": {
+    "label": "R"
+  },
+  "receive-drug.mp3": {
+    "label": "ที่ช่องรับยา"
+  },
+  "S.mp3": {
+    "label": "S"
+  },
+  "screen-point.mp3": {
+    "label": "ที่จุดคัดกรอง"
+  },
+  "screen-table.mp3": {
+    "label": "ที่โต๊ะคัดกรอง"
+  },
+  "silent.mp3": {
+    "label": "space"
+  },
+  "T.mp3": {
+    "label": "T"
+  },
+  "table.mp3": {
+    "label": "ที่โต๊ะ"
+  },
+  "U.mp3": {
+    "label": "U"
+  },
+  "V.mp3": {
+    "label": "V"
+  },
+  "W.mp3": {
+    "label": "W"
+  },
+  "X.mp3": {
+    "label": "X"
+  },
+  "Y.mp3": {
+    "label": "Y"
+  },
+  "Z.mp3": {
+    "label": "Z"
+  }
+}

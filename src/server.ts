@@ -16,7 +16,7 @@ const app = express();
 requireProductionConfig();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsPath = path.resolve(__dirname, '../../uploads');
-const assetsPath = path.resolve(__dirname, '../../assets');
+const assetsPath = path.resolve(__dirname, '../assets');
 const allowedOrigins = corsOrigins();
 if (process.env.TRUST_PROXY === 'true') app.set('trust proxy', 1);
 app.use(cors({

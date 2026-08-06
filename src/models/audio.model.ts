@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 
-const audioDir = path.resolve(process.cwd(), '../assets/audio');
+const audioDir = path.resolve(process.cwd(), 'assets/audio');
 const indexPath = path.join(audioDir, 'index.json');
 const allowedExts = new Set(['mp3', 'wav', 'ogg']);
 
