@@ -34,6 +34,7 @@ function targetQuery() {
       'a.opd_qs_slot_id',
       'a.queue_slot_number',
       'a.vn',
+      'a.queue_datetime',
       'o.oqueue',
       'o.hn',
       'a.opd_qs_room_id',
@@ -51,17 +52,28 @@ function targetQuery() {
     .orderBy('r.opd_qs_location_id', 'asc')
     .orderBy('r.opd_qs_room_number', 'asc')
     .orderBy('a.queue_slot_number_int', 'asc')
-    .orderBy('a.start_time', 'asc');
+    .orderBy('a.start_time', 'asc')
+    .whereNull('a.ref_key');
 }
 
 function dedupeTargets(targets: any[]) {
-  const seen = new Set<string>();
-  return targets.filter(target => {
-    const key = String(target.opd_qs_slot_id);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
+  const latestByLocation = new Map<string, any>();
+  for (const target of targets) {
+    const key = [target.hn || '', target.oqueue || target.queue_slot_number || '', target.opd_qs_location_id || target.opd_qs_room_id || ''].join('|');
+    const current = latestByLocation.get(key);
+    if (!current || queueTime(target) >= queueTime(current)) latestByLocation.set(key, target);
+  }
+  return [...latestByLocation.values()].sort((a, b) => {
+    const locationSort = Number(a.opd_qs_location_id || 0) - Number(b.opd_qs_location_id || 0);
+    if (locationSort) return locationSort;
+    const roomSort = Number(a.opd_qs_room_number || a.opd_qs_room_id || 0) - Number(b.opd_qs_room_number || b.opd_qs_room_id || 0);
+    if (roomSort) return roomSort;
+    return Number(a.queue_slot_number_int || 0) - Number(b.queue_slot_number_int || 0);
   });
+}
+
+function queueTime(target: any) {
+  return new Date(target.queue_datetime || 0).getTime();
 }
 
 async function buildQueueResult(target: any) {
