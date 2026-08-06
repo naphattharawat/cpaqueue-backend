@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { logLogin } from '../models/audit.model.js';
+import { rateLimit } from '../security.js';
 import { authenticateLdap } from '../services/ldap.service.js';
 
 export const authRouter = Router();
@@ -8,7 +9,7 @@ authRouter.get('/me', (req, res) => {
   res.json({ status: 'success', data: req.session.user || null });
 });
 
-authRouter.post('/login', async (req, res, next) => {
+authRouter.post('/login', rateLimit({ keyPrefix: 'auth-login', windowMs: 60_000, max: 10 }), async (req, res, next) => {
   try {
     const user = await authenticateLdap(String(req.body.username || ''), String(req.body.password || ''));
     req.session.user = user;

@@ -8,5 +8,6 @@ declare module 'express-session' {
       cid: string;
       roles: string[];
     };
+    csrfToken?: string;
   }
 }

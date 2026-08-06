@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS service_location_config (
   recorded_room_type VARCHAR(60) DEFAULT 'doctor_room',
   voice_rate DECIMAL(3,2) DEFAULT 1.00,
   call_repeat_count TINYINT NOT NULL DEFAULT 1,
+  pooled_call_enabled TINYINT(1) NOT NULL DEFAULT 0,
   default_room_ids TEXT,
   settings_json JSON NULL,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

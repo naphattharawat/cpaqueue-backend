@@ -30,7 +30,7 @@ export async function authenticateLdap(usernameInput: string, password: string):
         roles: ['user'],
       };
     }
-    return mapUser(username, user);
+    return mapUser(client, username, user);
   } catch (err) {
     console.warn(`LDAP ${bound ? 'search' : 'bind'} failed for ${username}:`, err instanceof Error ? err.message : err);
     throw err;
@@ -70,17 +70,58 @@ async function findUser(client: Client, username: string) {
   return null;
 }
 
-function mapUser(username: string, entry: any): AuthUser {
+async function mapUser(client: Client, username: string, entry: any): Promise<AuthUser> {
   const cidAttr = process.env.LDAP_CID_ATTRIBUTE || 'employeeID';
   const memberOf = Array.isArray(entry.memberOf) ? entry.memberOf : entry.memberOf ? [entry.memberOf] : [];
   const adminGroup = requiredEnv('LDAP_ADMIN_GROUP');
-  const isAdmin = memberOf.some((dn: string) => groupMatches(dn, adminGroup));
+  const isAdmin = memberOf.some((dn: string) => groupMatches(dn, adminGroup)) || await isNestedAdminMember(client, username, entry, adminGroup);
   return {
     username: String(entry.sAMAccountName || username),
     displayName: String(entry.displayName || entry.cn || username),
     cid: String(entry[cidAttr] || ''),
     roles: isAdmin ? ['admin', 'user'] : ['user'],
   };
+}
+
+async function isNestedAdminMember(client: Client, username: string, entry: any, adminGroup: string) {
+  const groupDns = await findGroupDns(client, adminGroup);
+  if (!groupDns.length) return false;
+  const userDn = String(entry.dn || entry.distinguishedName || '');
+  const filters = groupDns.map(groupDn => `(memberOf:1.2.840.113556.1.4.1941:=${escapeFilter(groupDn)})`).join('');
+  const identity = userDn
+    ? `(distinguishedName=${escapeFilter(userDn)})`
+    : `(|(sAMAccountName=${escapeFilter(username)})(userPrincipalName=${escapeFilter(bindName(username))}))`;
+  try {
+    const { searchEntries } = await client.search(requiredEnv('LDAP_BASE_DN'), {
+      scope: 'sub',
+      filter: `(&${identity}(|${filters}))`,
+      attributes: ['sAMAccountName'],
+      sizeLimit: 1,
+    });
+    return !!searchEntries[0];
+  } catch (err) {
+    console.warn(`LDAP nested admin group check failed for ${username}:`, err instanceof Error ? err.message : err);
+    return false;
+  }
+}
+
+async function findGroupDns(client: Client, group: string) {
+  const baseDn = requiredEnv('LDAP_BASE_DN');
+  const escaped = escapeFilter(group);
+  try {
+    const { searchEntries } = await client.search(baseDn, {
+      scope: 'sub',
+      filter: `(|(cn=${escaped})(sAMAccountName=${escaped})(distinguishedName=${escaped}))`,
+      attributes: ['cn', 'distinguishedName'],
+      sizeLimit: 20,
+    });
+    return searchEntries
+      .map((entry: any) => String(entry.dn || entry.distinguishedName || ''))
+      .filter(Boolean);
+  } catch (err) {
+    console.warn(`LDAP admin group search failed for ${group}:`, err instanceof Error ? err.message : err);
+    return [];
+  }
 }
 
 function groupMatches(dn: string, group: string) {

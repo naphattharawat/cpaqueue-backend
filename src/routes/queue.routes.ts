@@ -8,6 +8,7 @@ import * as Media from '../models/media.model.js';
 import * as Audio from '../models/audio.model.js';
 import * as LocationConfig from '../models/location-config.model.js';
 import { requireAdmin, requireAuth } from '../middleware/auth.middleware.js';
+import { rateLimit } from '../security.js';
 import { wsHub } from '../wsHub.js';
 
 export const queueRouter = Router();
@@ -24,17 +25,17 @@ const audioUpload = multer({
 
 const ok = (data: unknown) => ({ status: 'success', data });
 
-queueRouter.get('/check-queue', async (req, res, next) => {
+queueRouter.get('/check-queue', rateLimit({ keyPrefix: 'check-queue', windowMs: 60_000, max: 60 }), async (req, res, next) => {
   try { res.json(await checkQueue(String(req.query.q ?? ''))); } catch (e) { next(e); }
 });
-queueRouter.get('/display-devices/resolve', async (req, res, next) => {
+queueRouter.get('/display-devices/resolve', rateLimit({ keyPrefix: 'display-device-resolve', windowMs: 60_000, max: 120 }), async (req, res, next) => {
   try {
     const device = await LocationConfig.resolveDisplayDevice(String(req.query.token || ''), req.ip);
     if (!device) return res.status(404).json({ ok: false, error: 'Display device not found' });
     res.json(ok(device));
   } catch (e) { next(e); }
 });
-queueRouter.get('/display-devices/display', async (req, res, next) => {
+queueRouter.get('/display-devices/display', rateLimit({ keyPrefix: 'display-device-display', windowMs: 60_000, max: 180 }), async (req, res, next) => {
   try {
     const device = await LocationConfig.resolveDisplayDevice(String(req.query.token || ''), req.ip);
     if (!device) return res.status(404).json({ ok: false, error: 'Display device not found' });
@@ -58,7 +59,7 @@ queueRouter.use(['/media', '/media/*', '/location-configs', '/location-configs/*
 queueRouter.use(requireAuth);
 
 queueRouter.get('/locations', async (_req, res, next) => { try { res.json(ok(await Queue.getLocations())); } catch (e) { next(e); } });
-queueRouter.get('/dashboard/summary', async (_req, res, next) => { try { res.json(ok(await dashboardSummary())); } catch (e) { next(e); } });
+queueRouter.get('/dashboard/summary', requireAdmin, async (_req, res, next) => { try { res.json(ok(await dashboardSummary())); } catch (e) { next(e); } });
 queueRouter.get('/doctors', async (req, res, next) => { try { res.json(ok(await Queue.getDoctors(String(req.query.location_id ?? '')))); } catch (e) { next(e); } });
 queueRouter.get('/rooms', async (req, res, next) => { try { res.json(ok(await Queue.getRooms(String(req.query.location_id ?? '')))); } catch (e) { next(e); } });
 queueRouter.get('/doctor-room', async (req, res, next) => {
@@ -87,7 +88,13 @@ queueRouter.get('/audio-files', async (_req, res, next) => {
 queueRouter.post('/audio-files', audioUpload.single('audio_file'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ status: 'error', message: 'Missing audio_file' });
-    res.json(ok(await Audio.addAudioFile({ tempPath: req.file.path, originalName: req.file.originalname, key: req.body.key, label: req.body.label })));
+    const detected = await Audio.detectAudioFile(req.file.path);
+    if (!detected) {
+      const fs = await import('fs/promises');
+      await fs.rm(req.file.path, { force: true });
+      return res.status(400).json({ status: 'error', message: 'Unsupported audio type' });
+    }
+    res.json(ok(await Audio.addAudioFile({ tempPath: req.file.path, originalName: req.file.originalname, key: req.body.key, label: req.body.label, ext: detected.ext })));
   } catch (e) { next(e); }
 });
 queueRouter.put('/audio-files', async (req, res, next) => {
@@ -114,10 +121,14 @@ queueRouter.delete('/display-devices/:deviceId', async (req, res, next) => {
 queueRouter.post('/media', upload.single('media_file'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ status: 'error', message: 'Missing media_file' });
-    const ext = (req.file.originalname.split('.').pop() || 'png').toLowerCase();
-    const finalName = `${req.file.filename}.${ext}`;
     const fs = await import('fs/promises');
     const path = await import('path');
+    const detected = await Media.detectImageFile(req.file.path);
+    if (!detected) {
+      await fs.rm(req.file.path, { force: true });
+      return res.status(400).json({ status: 'error', message: 'Unsupported image type' });
+    }
+    const finalName = `${req.file.filename}.${detected.ext}`;
     await fs.rename(req.file.path, path.join(Media.getUploadDir(), finalName));
     res.json({ status: 'success', data: await Media.addMedia({ file: finalName, type: 'image', label: req.body.label || req.file.originalname, duration: Math.max(3, Number(req.body.duration || 10)), enabled: req.body.enabled === 'false' ? 0 : 1 }) });
   } catch (e) { next(e); }

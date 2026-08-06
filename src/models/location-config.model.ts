@@ -46,6 +46,7 @@ export async function listLocationConfigs() {
       recorded_room_type: config.recorded_room_type || 'doctor_room',
       voice_rate: Number(config.voice_rate || 1),
       call_repeat_count: normalizeCallRepeatCount(config.call_repeat_count),
+      pooled_call_enabled: !!Number(config.pooled_call_enabled || 0),
       settings: parseSettings(config.settings_json),
       google_room_label: parseSettings(config.settings_json).google_room_label || 'ห้องตรวจ',
       default_room_ids: splitCsv(config.default_room_ids || ''),
@@ -63,6 +64,7 @@ export async function updateLocationConfig(locationId: string, body: any) {
     recorded_room_type: recordedRoomType,
     voice_rate: normalizeVoiceRate(body.voice_rate),
     call_repeat_count: normalizeCallRepeatCount(body.call_repeat_count),
+    pooled_call_enabled: body.pooled_call_enabled ? 1 : 0,
     default_room_ids: Array.isArray(body.default_room_ids) ? body.default_room_ids.join(',') : String(body.default_room_ids || ''),
     settings_json: JSON.stringify({ ...(body.settings || {}), google_room_label: body.google_room_label || body.settings?.google_room_label || '' }),
   };

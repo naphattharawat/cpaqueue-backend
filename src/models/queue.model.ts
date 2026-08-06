@@ -8,7 +8,7 @@ export async function getLocations() {
 
 export async function getDoctors(locationId: string) {
   const scheduled = await hospitalDb('opd_qs_slot as a')
-    .distinct('d.code', 'd.name', { room_name: 'b.opd_qs_room_name' }, { room_number: 'b.opd_qs_room_number' })
+    .distinct('d.code', 'd.name', { opd_qs_room_id: 'b.opd_qs_room_id' }, { room_name: 'b.opd_qs_room_name' }, { room_number: 'b.opd_qs_room_number' })
     .join('opd_qs_room as b', 'a.opd_qs_room_id', 'b.opd_qs_room_id')
     .join('doctor as d', 'a.doctor_code', 'd.code')
     .where('b.opd_qs_location_id', locationId)
@@ -17,7 +17,7 @@ export async function getDoctors(locationId: string) {
     .orderBy('d.name', 'asc');
   if (scheduled.length) return scheduled;
   return hospitalDb('opd_qs_room as r')
-    .distinct('d.code', 'd.name', { room_name: 'r.opd_qs_room_name' }, { room_number: 'r.opd_qs_room_number' })
+    .distinct('d.code', 'd.name', { opd_qs_room_id: 'r.opd_qs_room_id' }, { room_name: 'r.opd_qs_room_name' }, { room_number: 'r.opd_qs_room_number' })
     .join('doctor as d', function joinDoctor() {
       this.on('r.doctor_code', '=', 'd.code').orOn('r.doctor_in_room', '=', 'd.code');
     })
@@ -119,7 +119,8 @@ export async function getQueues(locationId: string, doctorCodes: string[] = []) 
 
 export async function logQueueCall(input: { slotId: string; roomId: string; status: 'N' | 'W' }) {
   const d = await hospitalDb('opd_qs_slot as a')
-    .select('a.queue_slot_number', 'o.oqueue', 'o.hn', 'a.vn', 'p.fname', 'p.lname', { doctor_name: 'd.name' }, 'a.call_opd_qs_room_id', 'a.opd_qs_room_id')
+    .select('a.queue_slot_number', 'o.oqueue', 'o.hn', 'a.vn', 'p.fname', 'p.lname', { doctor_name: 'd.name' }, 'a.call_opd_qs_room_id', 'a.opd_qs_room_id', { slot_location_id: 'sr.opd_qs_location_id' })
+    .leftJoin('opd_qs_room as sr', 'a.opd_qs_room_id', 'sr.opd_qs_room_id')
     .leftJoin('ovst as o', 'a.vn', 'o.vn')
     .leftJoin('patient as p', 'o.hn', 'p.hn')
     .leftJoin('doctor as d', 'a.doctor_code', 'd.code')
@@ -131,6 +132,11 @@ export async function logQueueCall(input: { slotId: string; roomId: string; stat
     .where('r.opd_qs_room_id', input.roomId)
     .first();
   if (!d || !r) return { detail: d, room: r };
+  if (String(d.slot_location_id) !== String(r.opd_qs_location_id)) {
+    const error: any = new Error('Queue and room are not in the same service location');
+    error.status = 400;
+    throw error;
+  }
   await cpaDb('opd_qs_call').where({ slot_id: String(input.slotId) }).delete();
   await cpaDb('opd_qs_call').insert({
     slot_id: String(input.slotId),

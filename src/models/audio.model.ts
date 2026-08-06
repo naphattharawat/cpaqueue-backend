@@ -9,6 +9,22 @@ export function getAudioDir() {
   return audioDir;
 }
 
+export async function detectAudioFile(filePath: string) {
+  const handle = await fs.open(filePath, 'r');
+  try {
+    const buffer = Buffer.alloc(16);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    const b = buffer.subarray(0, bytesRead);
+    if (b.length >= 3 && b.subarray(0, 3).toString('ascii') === 'ID3') return { ext: 'mp3', mime: 'audio/mpeg' };
+    if (b.length >= 2 && b[0] === 0xff && (b[1] & 0xe0) === 0xe0) return { ext: 'mp3', mime: 'audio/mpeg' };
+    if (b.length >= 12 && b.subarray(0, 4).toString('ascii') === 'RIFF' && b.subarray(8, 12).toString('ascii') === 'WAVE') return { ext: 'wav', mime: 'audio/wav' };
+    if (b.length >= 4 && b.subarray(0, 4).toString('ascii') === 'OggS') return { ext: 'ogg', mime: 'audio/ogg' };
+    return null;
+  } finally {
+    await handle.close();
+  }
+}
+
 export async function listAudioFiles() {
   await fs.mkdir(audioDir, { recursive: true });
   const meta = await readIndex();
@@ -23,9 +39,9 @@ export async function listAudioFiles() {
   })).sort((a, b) => String(a.label || a.key).localeCompare(String(b.label || b.key), 'en', { sensitivity: 'base' }));
 }
 
-export async function addAudioFile(input: { tempPath: string; originalName: string; key: string; label: string }) {
+export async function addAudioFile(input: { tempPath: string; originalName: string; key: string; label: string; ext?: string }) {
   await fs.mkdir(audioDir, { recursive: true });
-  const ext = extOf(input.originalName);
+  const ext = input.ext || extOf(input.originalName);
   if (!allowedExts.has(ext)) throw new Error('Unsupported audio type');
   const safeKey = safeAudioKey(input.key || path.basename(input.originalName, path.extname(input.originalName)));
   if (!safeKey) throw new Error('Missing audio key');
