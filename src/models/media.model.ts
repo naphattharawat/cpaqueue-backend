@@ -1,8 +1,12 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { fileURLToPath } from 'url';
 
-const uploadDir = path.resolve(process.cwd(), '../uploads');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const uploadDir = process.env.UPLOADS_DIR
+  ? path.resolve(process.env.UPLOADS_DIR)
+  : path.resolve(__dirname, '../uploads');
 const indexPath = path.join(uploadDir, 'index.json');
 const locationIndexPath = path.join(uploadDir, 'location-media.json');
 const defaultMedia = {

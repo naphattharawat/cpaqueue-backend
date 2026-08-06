@@ -15,7 +15,9 @@ import { corsOrigins, csrfProtection, requireProductionConfig, securityHeaders }
 const app = express();
 requireProductionConfig();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const uploadsPath = path.resolve(__dirname, '../../uploads');
+const uploadsPath = process.env.UPLOADS_DIR
+  ? path.resolve(process.env.UPLOADS_DIR)
+  : path.resolve(__dirname, '../uploads');
 const assetsPath = process.env.ASSETS_DIR
   ? path.resolve(process.env.ASSETS_DIR)
   : path.resolve(__dirname, '../assets');
