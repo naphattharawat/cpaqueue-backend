@@ -22,6 +22,7 @@ const assetsPath = process.env.ASSETS_DIR
   ? path.resolve(process.env.ASSETS_DIR)
   : path.resolve(__dirname, '../assets');
 const allowedOrigins = corsOrigins();
+const sessionSameSite = process.env.SESSION_SAME_SITE === 'none' ? 'none' : 'lax';
 if (process.env.TRUST_PROXY === 'true') app.set('trust proxy', 1);
 app.use(cors({
   origin(origin, callback) {
@@ -40,7 +41,7 @@ app.use(session({
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
-    sameSite: 'lax',
+    sameSite: sessionSameSite,
     secure: process.env.SESSION_SECURE === 'true',
     maxAge: Number(process.env.SESSION_MAX_AGE_MS || 12 * 60 * 60 * 1000),
   },
