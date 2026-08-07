@@ -153,6 +153,70 @@ export async function getMultiDisplayData(roomIds: number[]) {
   return { status: 'success', rooms_data: roomsData, called_list, call_repeat_count: await callRepeatCount(locationId) };
 }
 
+export async function getRoomListDisplayData(roomIds: number[], limit = 6) {
+  const safeLimit = Math.min(12, Math.max(1, Math.round(Number(limit) || 6)));
+  if (!roomIds.length) return { status: 'success', rooms_data: [], limit: safeLimit };
+
+  const roomsInfo = await hospitalDb('opd_qs_room as r')
+    .select('r.opd_qs_room_id', 'r.opd_qs_room_name', 'r.opd_qs_room_number', 'r.opd_qs_location_id', { location_name: 'l.opd_qs_location_name' })
+    .leftJoin('opd_qs_location as l', 'r.opd_qs_location_id', 'l.opd_qs_location_id')
+    .whereIn('r.opd_qs_room_id', roomIds)
+    .orderBy('r.opd_qs_room_number', 'asc')
+    .orderBy('r.opd_qs_room_name', 'asc');
+  const roomMap = new Map(roomsInfo.map((r: any) => [String(r.opd_qs_room_id), r]));
+
+  const calls = await cpaDb('queue_call_logs')
+    .select('log_id', 'slot_id', 'room_id', 'queue_no', 'oqueue', 'logged_at', 'hn', 'patient_name', 'room_number', 'room_name')
+    .whereIn('room_id', roomIds.map(String))
+    .where('action', 'call')
+    .whereBetween('logged_at', todayRange())
+    .orderBy('logged_at', 'desc')
+    .orderBy('log_id', 'desc');
+
+  const callsByRoom = new Map<string, any[]>();
+  for (const call of calls) {
+    const key = String(call.room_id);
+    const list = callsByRoom.get(key) || [];
+    if (list.length < safeLimit) list.push(call);
+    callsByRoom.set(key, list);
+  }
+
+  const detailMap = new Map<string, any>();
+  const slotIds = [...new Set(calls.map((c: any) => String(c.slot_id)))];
+  for (const detail of await slotDetails(slotIds, []) as any[]) {
+    detailMap.set(String(detail.opd_qs_slot_id), detail);
+  }
+
+  const roomsData = roomIds.map(roomId => {
+    const room = roomMap.get(String(roomId));
+    if (!room) return null;
+    const queues = (callsByRoom.get(String(roomId)) || []).map(call => {
+      const detail = detailMap.get(String(call.slot_id));
+      return {
+        ...detail,
+        slot_id: call.slot_id,
+        call_id: call.log_id,
+        call_datetime: call.logged_at,
+        queue_no: detail?.queue_slot_number || call.queue_no,
+        oqueue: detail?.oqueue || call.oqueue,
+        hn: call.hn,
+        patient_name: detail?.patient_name || call.patient_name || '',
+      };
+    });
+    return {
+      room_id: roomId,
+      room_name: room.opd_qs_room_name,
+      room_number: room.opd_qs_room_number,
+      location_id: room.opd_qs_location_id,
+      location_name: room.location_name,
+      queues,
+    };
+  }).filter(Boolean);
+
+  const locationId = roomsInfo[0]?.opd_qs_location_id || '';
+  return { status: 'success', rooms_data: roomsData, limit: safeLimit, location_id: locationId };
+}
+
 function withPatientName(row: any) {
   const prefix = row.pname || 'คุณ';
   const name = `${row.fname || ''} ${row.lname || ''}`.trim();

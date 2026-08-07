@@ -20,6 +20,7 @@ export const voiceTypes = [
   'table',
   'silent',
 ];
+const displayDeviceTypes = new Set(['single', 'multi', 'room-list']);
 
 export async function listLocationConfigs() {
   const locations = await hospitalDb('opd_qs_location')
@@ -27,7 +28,7 @@ export async function listLocationConfigs() {
     .orderBy('opd_qs_location_name', 'asc');
   const configs = await cpaDb('service_location_config').select('*');
   const devices = await cpaDb('display_devices')
-    .select('device_id', 'device_name', 'device_type', 'location_id', 'room_ids', 'allowed_ips', 'active', 'last_seen_at', 'last_seen_ip', 'created_at', 'updated_at')
+    .select('device_id', 'device_name', 'device_type', 'location_id', 'room_ids', 'allowed_ips', 'active', 'settings_json', 'last_seen_at', 'last_seen_ip', 'created_at', 'updated_at')
     .orderBy('device_id', 'desc');
   const configByLocation = new Map(configs.map(row => [String(row.location_id), row]));
   const devicesByLocation = new Map<string, any[]>();
@@ -88,7 +89,7 @@ export async function createDisplayDevice(locationId: string, body: any) {
   const tokenHash = hashToken(token);
   const [deviceId] = await cpaDb('display_devices').insert({
     device_name: String(body.device_name || 'Display device'),
-    device_type: body.device_type === 'single' ? 'single' : 'multi',
+    device_type: normalizeDeviceType(body.device_type),
     location_id: locationId,
     room_ids: Array.isArray(body.room_ids) ? body.room_ids.join(',') : String(body.room_ids || ''),
     token_hash: tokenHash,
@@ -102,7 +103,7 @@ export async function createDisplayDevice(locationId: string, body: any) {
 export async function updateDisplayDevice(deviceId: string, body: any) {
   await cpaDb('display_devices').where({ device_id: deviceId }).update({
     device_name: String(body.device_name || 'Display device'),
-    device_type: body.device_type === 'single' ? 'single' : 'multi',
+    device_type: normalizeDeviceType(body.device_type),
     room_ids: Array.isArray(body.room_ids) ? body.room_ids.join(',') : String(body.room_ids || ''),
     allowed_ips: Array.isArray(body.allowed_ips) ? body.allowed_ips.join(',') : String(body.allowed_ips || ''),
     active: body.active === false ? 0 : 1,
@@ -125,7 +126,7 @@ export async function deleteDisplayDevice(deviceId: string) {
 export async function resolveDisplayDevice(token: string, ip = '') {
   const tokenHash = hashToken(token);
   const row = await cpaDb('display_devices')
-    .select('device_id', 'device_name', 'device_type', 'location_id', 'room_ids', 'allowed_ips', 'active', 'last_seen_at', 'last_seen_ip', 'created_at', 'updated_at')
+    .select('device_id', 'device_name', 'device_type', 'location_id', 'room_ids', 'allowed_ips', 'active', 'settings_json', 'last_seen_at', 'last_seen_ip', 'created_at', 'updated_at')
     .where({ token_hash: tokenHash })
     .first();
   if (!row || !row.active) return null;
@@ -148,7 +149,7 @@ export function hashToken(token: string) {
 
 async function getDevice(deviceId: string | number) {
   const row = await cpaDb('display_devices')
-    .select('device_id', 'device_name', 'device_type', 'location_id', 'room_ids', 'allowed_ips', 'active', 'last_seen_at', 'last_seen_ip', 'created_at', 'updated_at')
+    .select('device_id', 'device_name', 'device_type', 'location_id', 'room_ids', 'allowed_ips', 'active', 'settings_json', 'last_seen_at', 'last_seen_ip', 'created_at', 'updated_at')
     .where({ device_id: deviceId })
     .first();
   return row ? normalizeDevice(row) : null;
@@ -160,7 +161,13 @@ function normalizeDevice(row: any) {
     active: !!row.active,
     room_ids: splitCsv(row.room_ids || ''),
     allowed_ips: splitCsv(row.allowed_ips || ''),
+    settings: parseSettings(row.settings_json),
   };
+}
+
+function normalizeDeviceType(value: any) {
+  const type = String(value || '').trim();
+  return displayDeviceTypes.has(type) ? type : 'multi';
 }
 
 function splitCsv(value: string) {

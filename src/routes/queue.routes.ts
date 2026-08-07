@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { dashboardSummary, logQueueAction } from '../models/audit.model.js';
 import * as Queue from '../models/queue.model.js';
-import { getDisplayData, getMultiDisplayData } from '../models/display.model.js';
+import { getDisplayData, getMultiDisplayData, getRoomListDisplayData } from '../models/display.model.js';
 import { checkQueue } from '../models/check.model.js';
 import * as Media from '../models/media.model.js';
 import * as Audio from '../models/audio.model.js';
@@ -43,6 +43,9 @@ queueRouter.get('/display-devices/display', rateLimit({ keyPrefix: 'display-devi
     if (device.device_type === 'single') {
       return res.json(await getDisplayData(String(device.location_id), String(roomIds[0] || ''), ''));
     }
+    if (device.device_type === 'room-list') {
+      return res.json(await getRoomListDisplayData([...new Set<number>(roomIds)], Number(device.settings?.queue_limit || 6)));
+    }
     res.json(await getMultiDisplayData([...new Set<number>(roomIds)]));
   } catch (e) { next(e); }
 });
@@ -77,6 +80,9 @@ queueRouter.get('/display', async (req, res, next) => {
 });
 queueRouter.get('/display-multi', async (req, res, next) => {
   try { res.json(await getMultiDisplayData([...new Set(String(req.query.room_ids ?? '').split(',').map(Number).filter(Boolean))])); } catch (e) { next(e); }
+});
+queueRouter.get('/display-room-list', async (req, res, next) => {
+  try { res.json(await getRoomListDisplayData([...new Set(String(req.query.room_ids ?? '').split(',').map(Number).filter(Boolean))], Number(req.query.limit || 6))); } catch (e) { next(e); }
 });
 queueRouter.get('/location-configs', async (_req, res, next) => {
   try { res.json(ok(await LocationConfig.listLocationConfigs())); } catch (e) { next(e); }
@@ -176,9 +182,11 @@ queueRouter.post('/hold', async (req, res, next) => {
 });
 queueRouter.post('/cancel', async (req, res, next) => {
   try {
-    await Queue.cancelQueue(String(req.body.slot_id));
-    logQueueAction({ action: 'cancel', slotId: String(req.body.slot_id), room: { room_id: req.body.room_id }, user: req.session.user, ip: req.ip }).catch(err => console.warn('Queue cancel log failed:', err));
-    wsHub.broadcastQueueChanged({ action: 'cancel', slotId: req.body.slot_id, roomId: req.body.room_id, locationId: req.body.location_id });
+    const canceled = await Queue.cancelQueue(String(req.body.slot_id));
+    const roomId = canceled?.room_id ?? req.body.room_id;
+    const locationId = canceled?.location_id ?? req.body.location_id;
+    logQueueAction({ action: 'cancel', slotId: String(req.body.slot_id), room: { room_id: roomId }, user: req.session.user, ip: req.ip }).catch(err => console.warn('Queue cancel log failed:', err));
+    wsHub.broadcastQueueChanged({ action: 'cancel', slotId: req.body.slot_id, roomId, locationId, queueNo: canceled?.queue_no });
     res.json({ status: 'success' });
   } catch (e) { next(e); }
 });

@@ -154,7 +154,12 @@ export async function logQueueCall(input: { slotId: string; roomId: string; stat
 }
 
 export async function cancelQueue(slotId: string) {
+  const current = await cpaDb('opd_qs_call')
+    .select('slot_id', 'room_id', 'location_id', 'queue_no', 'call_status')
+    .where({ slot_id: String(slotId) })
+    .first();
   await cpaDb('opd_qs_call').where({ slot_id: String(slotId) }).delete();
+  return current || null;
 }
 
 function patientName(row: any) {
