@@ -39,14 +39,7 @@ queueRouter.get('/display-devices/display', rateLimit({ keyPrefix: 'display-devi
   try {
     const device = await LocationConfig.resolveDisplayDevice(String(req.query.token || ''), req.ip);
     if (!device) return res.status(404).json({ ok: false, error: 'Display device not found' });
-    const roomIds = (device.room_ids || []).map(Number).filter(Boolean);
-    if (device.device_type === 'single') {
-      return res.json(await getMultiDisplayData([...new Set<number>(roomIds)]));
-    }
-    if (device.device_type === 'room-list') {
-      return res.json(await getRoomListDisplayData([...new Set<number>(roomIds)], Number(device.settings?.queue_limit || 6)));
-    }
-    res.json(await getMultiDisplayData([...new Set<number>(roomIds)]));
+    res.json(await displayDataForDevice(device));
   } catch (e) { next(e); }
 });
 queueRouter.get('/media', async (req, res, next) => {
@@ -88,6 +81,20 @@ queueRouter.get('/location-configs', async (_req, res, next) => {
   try { res.json(ok(await LocationConfig.listLocationConfigs())); } catch (e) { next(e); }
 });
 queueRouter.get('/location-configs/voice-types', (_req, res) => res.json(ok(LocationConfig.voiceTypes)));
+queueRouter.get('/display-devices/:deviceId/preview', async (req, res, next) => {
+  try {
+    const device = await LocationConfig.getDevice(req.params.deviceId);
+    if (!device) return res.status(404).json({ status: 'error', message: 'Display device not found' });
+    res.json(ok(device));
+  } catch (e) { next(e); }
+});
+queueRouter.get('/display-devices/:deviceId/preview-data', async (req, res, next) => {
+  try {
+    const device = await LocationConfig.getDevice(req.params.deviceId);
+    if (!device) return res.status(404).json({ status: 'error', message: 'Display device not found' });
+    res.json(await displayDataForDevice(device));
+  } catch (e) { next(e); }
+});
 queueRouter.get('/audio-files', async (req, res, next) => {
   try { res.json(ok(await Audio.listAudioFiles(req.query.destination === '1'))); } catch (e) { next(e); }
 });
@@ -132,6 +139,14 @@ queueRouter.post('/display-devices/:deviceId/rotate-token', async (req, res, nex
 queueRouter.delete('/display-devices/:deviceId', async (req, res, next) => {
   try { res.json(ok(await LocationConfig.deleteDisplayDevice(req.params.deviceId))); } catch (e) { next(e); }
 });
+
+async function displayDataForDevice(device: any) {
+  const roomIds = [...new Set<number>((device.room_ids || []).map(Number).filter(Boolean))];
+  if (device.device_type === 'room-list') {
+    return getRoomListDisplayData(roomIds, Number(device.settings?.queue_limit || 6));
+  }
+  return getMultiDisplayData(roomIds);
+}
 queueRouter.post('/media', upload.single('media_file'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ status: 'error', message: 'Missing media_file' });

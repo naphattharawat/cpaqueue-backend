@@ -50,6 +50,7 @@ export async function listLocationConfigs() {
       pooled_call_enabled: !!Number(config.pooled_call_enabled || 0),
       settings: parseSettings(config.settings_json),
       google_room_label: parseSettings(config.settings_json).google_room_label || 'ห้องตรวจ',
+      recorded_room_label: parseSettings(config.settings_json).recorded_room_label || '',
       recorded_number_mode: normalizeRecordedNumberMode(parseSettings(config.settings_json).recorded_number_mode),
       queue_colors: normalizeQueueColors(parseSettings(config.settings_json).queue_colors),
       queue_font_weight: normalizeQueueFontWeight(parseSettings(config.settings_json).queue_font_weight),
@@ -74,6 +75,7 @@ export async function updateLocationConfig(locationId: string, body: any) {
     settings_json: JSON.stringify({
       ...(body.settings || {}),
       google_room_label: body.google_room_label || body.settings?.google_room_label || '',
+      recorded_room_label: body.recorded_room_label || body.settings?.recorded_room_label || '',
       recorded_number_mode: normalizeRecordedNumberMode(body.recorded_number_mode || body.settings?.recorded_number_mode),
       queue_colors: normalizeQueueColors(body.queue_colors || body.settings?.queue_colors),
       queue_font_weight: normalizeQueueFontWeight(body.queue_font_weight || body.settings?.queue_font_weight),
@@ -160,7 +162,7 @@ export function hashToken(token: string) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-async function getDevice(deviceId: string | number) {
+export async function getDevice(deviceId: string | number) {
   const row = await cpaDb('display_devices')
     .select('device_id', 'device_name', 'device_type', 'location_id', 'room_ids', 'allowed_ips', 'active', 'settings_json', 'last_seen_at', 'last_seen_ip', 'created_at', 'updated_at')
     .where({ device_id: deviceId })

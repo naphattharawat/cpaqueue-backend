@@ -235,10 +235,10 @@ function todayRange(): [Date, Date] {
 }
 
 async function getDisplaySettings(locationId: string | number) {
-  const defaults = { call_repeat_count: 1, queue_colors: {}, queue_font_weight: '900', display_font_family: 'kanit' };
+  const defaults = { call_repeat_count: 1, queue_colors: {}, queue_font_weight: '900', display_font_family: 'kanit', destination_label: 'ห้องตรวจ' };
   if (!locationId) return defaults;
   const row = await cpaDb('service_location_config')
-    .select('call_repeat_count', 'settings_json')
+    .select('call_repeat_count', 'tts_provider', 'recorded_room_type', 'settings_json')
     .where({ location_id: String(locationId) })
     .first();
   const n = Math.round(Number(row?.call_repeat_count || 1));
@@ -249,7 +249,31 @@ async function getDisplaySettings(locationId: string | number) {
     queue_colors: settings.queue_colors && typeof settings.queue_colors === 'object' ? settings.queue_colors : {},
     queue_font_weight: ['400', '700', '900'].includes(String(settings.queue_font_weight)) ? String(settings.queue_font_weight) : '900',
     display_font_family: ['kanit', 'anuphan', 'ibm-plex-sans-thai', 'noto-sans-thai', 'prompt', 'sarabun'].includes(String(settings.display_font_family)) ? String(settings.display_font_family) : 'kanit',
+    destination_label: destinationLabel(row, settings),
   };
+}
+
+function destinationLabel(row: any, settings: any) {
+  if (row?.tts_provider !== 'recorded') return String(settings.google_room_label || 'ห้องตรวจ').trim() || 'ห้องตรวจ';
+  if (settings.recorded_room_label) return String(settings.recorded_room_label).trim();
+  const labels: Record<string, string> = {
+    cashier: 'ห้องการเงิน',
+    channel: 'ช่องบริการ',
+    couter: 'เคาน์เตอร์',
+    counter: 'เคาน์เตอร์',
+    doctor_room: 'ห้องตรวจ',
+    'interview-point': 'จุดซักประวัติ',
+    'interview-table': 'โต๊ะซักประวัติ',
+    number: 'หมายเลข',
+    'pay-cashier': 'ช่องจ่ายเงิน',
+    'pay-drug': 'ช่องจ่ายยา',
+    'receive-drug': 'ช่องรับยา',
+    'screen-point': 'จุดคัดกรอง',
+    'screen-table': 'โต๊ะคัดกรอง',
+    table: 'โต๊ะ',
+  };
+  const key = String(row?.recorded_room_type || 'doctor_room');
+  return labels[key] || key.replace(/[-_]+/g, ' ');
 }
 
 function parseSettings(value: any) {
