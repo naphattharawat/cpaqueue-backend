@@ -61,7 +61,8 @@ export async function getDisplayData(locationId: string, roomId = '', doctorCode
   }
   const allSlots = (await slotQuery).map(withPatientName);
   const waitingSlots = allSlots.filter((s: any) => !excluded.has(String(s.opd_qs_slot_id)));
-  return { status: 'success', active, active_list: activeList, hold_queues, next_queues: waitingSlots.slice(0, 5), remaining_count: Math.max(0, waitingSlots.length - 5), rooms, room_info: roomInfo, waiting: waitingSlots.length, called, call_repeat_count: await callRepeatCount(locationId) };
+  const displaySettings = await getDisplaySettings(locationId);
+  return { status: 'success', active, active_list: activeList, hold_queues, next_queues: waitingSlots.slice(0, 5), remaining_count: Math.max(0, waitingSlots.length - 5), rooms, room_info: roomInfo, waiting: waitingSlots.length, called, call_repeat_count: displaySettings.call_repeat_count, display_settings: displaySettings };
 }
 
 async function slotDetails(slotIds: string[], logs: any[]) {
@@ -150,7 +151,8 @@ export async function getMultiDisplayData(roomIds: number[]) {
   }));
 
   const locationId = roomsInfo[0]?.opd_qs_location_id || '';
-  return { status: 'success', rooms_data: roomsData, called_list, call_repeat_count: await callRepeatCount(locationId) };
+  const displaySettings = await getDisplaySettings(locationId);
+  return { status: 'success', rooms_data: roomsData, called_list, call_repeat_count: displaySettings.call_repeat_count, display_settings: displaySettings };
 }
 
 export async function getRoomListDisplayData(roomIds: number[], limit = 6) {
@@ -214,7 +216,7 @@ export async function getRoomListDisplayData(roomIds: number[], limit = 6) {
   }).filter(Boolean);
 
   const locationId = roomsInfo[0]?.opd_qs_location_id || '';
-  return { status: 'success', rooms_data: roomsData, limit: safeLimit, location_id: locationId };
+  return { status: 'success', rooms_data: roomsData, limit: safeLimit, location_id: locationId, display_settings: await getDisplaySettings(locationId) };
 }
 
 function withPatientName(row: any) {
@@ -232,12 +234,30 @@ function todayRange(): [Date, Date] {
   return [new Date(`${day}T00:00:00`), new Date(`${day}T23:59:59`)];
 }
 
-async function callRepeatCount(locationId: string | number) {
-  if (!locationId) return 1;
+async function getDisplaySettings(locationId: string | number) {
+  const defaults = { call_repeat_count: 1, queue_colors: {}, queue_font_weight: '900', display_font_family: 'kanit' };
+  if (!locationId) return defaults;
   const row = await cpaDb('service_location_config')
-    .select('*')
+    .select('call_repeat_count', 'settings_json')
     .where({ location_id: String(locationId) })
     .first();
   const n = Math.round(Number(row?.call_repeat_count || 1));
-  return Number.isFinite(n) ? Math.min(5, Math.max(1, n)) : 1;
+  const settings = parseSettings(row?.settings_json);
+  return {
+    ...defaults,
+    call_repeat_count: Number.isFinite(n) ? Math.min(5, Math.max(1, n)) : 1,
+    queue_colors: settings.queue_colors && typeof settings.queue_colors === 'object' ? settings.queue_colors : {},
+    queue_font_weight: ['400', '700', '900'].includes(String(settings.queue_font_weight)) ? String(settings.queue_font_weight) : '900',
+    display_font_family: ['kanit', 'anuphan', 'ibm-plex-sans-thai', 'noto-sans-thai', 'prompt', 'sarabun'].includes(String(settings.display_font_family)) ? String(settings.display_font_family) : 'kanit',
+  };
+}
+
+function parseSettings(value: any) {
+  if (!value) return {};
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
 }

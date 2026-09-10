@@ -1,308 +1,410 @@
 {
   "0.mp3": {
-    "label": "0"
+    "label": "0",
+    "is_destination": false
   },
   "1.mp3": {
-    "label": "1"
+    "label": "1",
+    "is_destination": false
   },
   "10.mp3": {
-    "label": "10"
+    "label": "10",
+    "is_destination": false
   },
   "100.mp3": {
-    "label": "100"
+    "label": "100",
+    "is_destination": false
   },
   "1000.mp3": {
-    "label": "1000"
+    "label": "1000",
+    "is_destination": false
   },
   "10000.mp3": {
-    "label": "10000"
+    "label": "10000",
+    "is_destination": false
   },
   "11.mp3": {
-    "label": "11"
+    "label": "11",
+    "is_destination": false
   },
   "2.mp3": {
-    "label": "2"
+    "label": "2",
+    "is_destination": false
   },
   "20.mp3": {
-    "label": "20"
+    "label": "20",
+    "is_destination": false
   },
   "3.mp3": {
-    "label": "3"
+    "label": "3",
+    "is_destination": false
   },
   "4.mp3": {
-    "label": "4"
+    "label": "4",
+    "is_destination": false
   },
   "5.mp3": {
-    "label": "5"
+    "label": "5",
+    "is_destination": false
   },
   "6.mp3": {
-    "label": "6"
+    "label": "6",
+    "is_destination": false
   },
   "7.mp3": {
-    "label": "7"
+    "label": "7",
+    "is_destination": false
   },
   "8.mp3": {
-    "label": "8"
+    "label": "8",
+    "is_destination": false
   },
   "9.mp3": {
-    "label": "9"
+    "label": "9",
+    "is_destination": false
   },
   "ก.mp3": {
-    "label": "ก"
+    "label": "ก",
+    "is_destination": false
   },
   "ข.mp3": {
-    "label": "ข"
+    "label": "ข",
+    "is_destination": false
   },
   "ฃ.mp3": {
-    "label": "ฃ"
+    "label": "ฃ",
+    "is_destination": false
   },
   "ค.mp3": {
-    "label": "ค"
+    "label": "ค",
+    "is_destination": false
   },
   "ฅ.mp3": {
-    "label": "ฅ"
+    "label": "ฅ",
+    "is_destination": false
   },
   "ฆ.mp3": {
-    "label": "ฆ"
+    "label": "ฆ",
+    "is_destination": false
   },
   "ง.mp3": {
-    "label": "ง"
+    "label": "ง",
+    "is_destination": false
   },
   "จ.mp3": {
-    "label": "จ"
+    "label": "จ",
+    "is_destination": false
   },
   "ฉ.mp3": {
-    "label": "ฉ"
+    "label": "ฉ",
+    "is_destination": false
   },
   "ช.mp3": {
-    "label": "ช"
+    "label": "ช",
+    "is_destination": false
   },
   "ซ.mp3": {
-    "label": "ซ"
+    "label": "ซ",
+    "is_destination": false
   },
   "ฌ.mp3": {
-    "label": "ฌ"
+    "label": "ฌ",
+    "is_destination": false
   },
   "ญ.mp3": {
-    "label": "ญ"
+    "label": "ญ",
+    "is_destination": false
   },
   "ฎ.mp3": {
-    "label": "ฎ"
+    "label": "ฎ",
+    "is_destination": false
   },
   "ฏ.mp3": {
-    "label": "ฏ"
+    "label": "ฏ",
+    "is_destination": false
   },
   "ฐ.mp3": {
-    "label": "ฐ"
+    "label": "ฐ",
+    "is_destination": false
   },
   "ฑ.mp3": {
-    "label": "ฑ"
+    "label": "ฑ",
+    "is_destination": false
   },
   "ฒ.mp3": {
-    "label": "ฒ"
+    "label": "ฒ",
+    "is_destination": false
   },
   "ณ.mp3": {
-    "label": "ณ"
+    "label": "ณ",
+    "is_destination": false
   },
   "ด.mp3": {
-    "label": "ด"
+    "label": "ด",
+    "is_destination": false
   },
   "ต.mp3": {
-    "label": "ต"
+    "label": "ต",
+    "is_destination": false
   },
   "ถ.mp3": {
-    "label": "ถ"
+    "label": "ถ",
+    "is_destination": false
   },
   "ท.mp3": {
-    "label": "ท"
+    "label": "ท",
+    "is_destination": false
   },
   "ธ.mp3": {
-    "label": "ธ"
+    "label": "ธ",
+    "is_destination": false
   },
   "น.mp3": {
-    "label": "น"
+    "label": "น",
+    "is_destination": false
   },
   "บ.mp3": {
-    "label": "บ"
+    "label": "บ",
+    "is_destination": false
   },
   "ป.mp3": {
-    "label": "ป"
+    "label": "ป",
+    "is_destination": false
   },
   "ผ.mp3": {
-    "label": "ผ"
+    "label": "ผ",
+    "is_destination": false
   },
   "ฝ.mp3": {
-    "label": "ฝ"
+    "label": "ฝ",
+    "is_destination": false
   },
   "พ.mp3": {
-    "label": "พ"
+    "label": "พ",
+    "is_destination": false
   },
   "ฟ.mp3": {
-    "label": "ฟ"
+    "label": "ฟ",
+    "is_destination": false
   },
   "ภ.mp3": {
-    "label": "ภ"
+    "label": "ภ",
+    "is_destination": false
   },
   "ม.mp3": {
-    "label": "ม"
+    "label": "ม",
+    "is_destination": false
   },
   "ย.mp3": {
-    "label": "ย"
+    "label": "ย",
+    "is_destination": false
   },
   "ร.mp3": {
-    "label": "ร"
+    "label": "ร",
+    "is_destination": false
   },
   "ล.mp3": {
-    "label": "ล"
+    "label": "ล",
+    "is_destination": false
   },
   "ว.mp3": {
-    "label": "ว"
+    "label": "ว",
+    "is_destination": false
   },
   "ศ.mp3": {
-    "label": "ศ"
+    "label": "ศ",
+    "is_destination": false
   },
   "ษ.mp3": {
-    "label": "ษ"
+    "label": "ษ",
+    "is_destination": false
   },
   "ส.mp3": {
-    "label": "ส"
+    "label": "ส",
+    "is_destination": false
   },
   "ห.mp3": {
-    "label": "ห"
+    "label": "ห",
+    "is_destination": false
   },
   "ฬ.mp3": {
-    "label": "ฬ"
+    "label": "ฬ",
+    "is_destination": false
   },
   "อ.mp3": {
-    "label": "อ"
+    "label": "อ",
+    "is_destination": false
   },
   "ฮ.mp3": {
-    "label": "ฮ"
+    "label": "ฮ",
+    "is_destination": false
   },
   "A.mp3": {
-    "label": "A"
+    "label": "A",
+    "is_destination": false
   },
   "B.mp3": {
-    "label": "B"
+    "label": "B",
+    "is_destination": false
   },
   "C.mp3": {
-    "label": "C"
+    "label": "C",
+    "is_destination": false
   },
   "cashier.mp3": {
-    "label": "ที่ช่องการเงิน"
+    "label": "ที่ช่องการเงิน",
+    "is_destination": true
   },
   "channel.mp3": {
-    "label": "ที่ช่องบริการ"
+    "label": "ที่ช่องบริการ",
+    "is_destination": true
   },
   "couter.mp3": {
-    "label": "ที่เคาเตอร์"
+    "label": "ที่เคาเตอร์",
+    "is_destination": true
   },
   "D.mp3": {
-    "label": "D"
+    "label": "D",
+    "is_destination": false
   },
   "doctor_room.mp3": {
-    "label": "ที่ห้องตรวจ"
+    "label": "ที่ห้องตรวจ",
+    "is_destination": true
   },
   "E.mp3": {
-    "label": "E"
+    "label": "E",
+    "is_destination": false
   },
   "F.mp3": {
-    "label": "F"
+    "label": "F",
+    "is_destination": false
   },
   "G.mp3": {
-    "label": "G"
+    "label": "G",
+    "is_destination": false
   },
   "H.mp3": {
-    "label": "H"
+    "label": "H",
+    "is_destination": false
   },
   "I.mp3": {
-    "label": "I"
+    "label": "I",
+    "is_destination": false
   },
   "interview-point.mp3": {
-    "label": "ที่จัดซักประวัติ"
+    "label": "ที่จัดซักประวัติ",
+    "is_destination": true
   },
   "interview-table.mp3": {
-    "label": "ที่โต๊ะซักประวัติ"
+    "label": "ที่โต๊ะซักประวัติ",
+    "is_destination": true
   },
   "J.mp3": {
-    "label": "J"
+    "label": "J",
+    "is_destination": false
   },
   "K.mp3": {
-    "label": "K"
+    "label": "K",
+    "is_destination": false
   },
   "ka.mp3": {
-    "label": "ค่ะ"
+    "label": "ค่ะ",
+    "is_destination": false
   },
   "L.mp3": {
-    "label": "L"
+    "label": "L",
+    "is_destination": false
   },
   "M.mp3": {
-    "label": "M"
+    "label": "M",
+    "is_destination": false
   },
   "N.mp3": {
-    "label": "N"
+    "label": "N",
+    "is_destination": false
   },
   "number.mp3": {
-    "label": "number"
+    "label": "หมายเลข",
+    "is_destination": false
   },
   "O.mp3": {
-    "label": "O"
+    "label": "O",
+    "is_destination": false
   },
   "P.mp3": {
-    "label": "P"
+    "label": "P",
+    "is_destination": false
   },
   "pay-cashier.mp3": {
-    "label": "ที่ช่องจ่ายเงิน"
+    "label": "ที่ช่องจ่ายเงิน",
+    "is_destination": true
   },
   "pay-drug.mp3": {
-    "label": "ที่ช่องจ่ายยา"
+    "label": "ที่ช่องจ่ายยา",
+    "is_destination": true
   },
   "please.mp3": {
-    "label": "เชิญหมายเลข"
+    "label": "เชิญหมายเลข",
+    "is_destination": false
   },
   "Q.mp3": {
-    "label": "Q"
+    "label": "Q",
+    "is_destination": false
   },
   "R.mp3": {
-    "label": "R"
+    "label": "R",
+    "is_destination": false
   },
   "receive-drug.mp3": {
-    "label": "ที่ช่องรับยา"
+    "label": "ที่ช่องรับยา",
+    "is_destination": true
   },
   "S.mp3": {
-    "label": "S"
+    "label": "S",
+    "is_destination": false
   },
   "screen-point.mp3": {
-    "label": "ที่จุดคัดกรอง"
+    "label": "ที่จุดคัดกรอง",
+    "is_destination": true
   },
   "screen-table.mp3": {
-    "label": "ที่โต๊ะคัดกรอง"
+    "label": "ที่โต๊ะคัดกรอง",
+    "is_destination": true
   },
   "silent.mp3": {
-    "label": "space"
+    "label": "space",
+    "is_destination": false
   },
   "T.mp3": {
-    "label": "T"
+    "label": "T",
+    "is_destination": false
   },
   "table.mp3": {
-    "label": "ที่โต๊ะ"
+    "label": "ที่โต๊ะ",
+    "is_destination": true
   },
   "U.mp3": {
-    "label": "U"
+    "label": "U",
+    "is_destination": false
   },
   "V.mp3": {
-    "label": "V"
+    "label": "V",
+    "is_destination": false
   },
   "W.mp3": {
-    "label": "W"
+    "label": "W",
+    "is_destination": false
   },
   "X.mp3": {
-    "label": "X"
+    "label": "X",
+    "is_destination": false
   },
   "Y.mp3": {
-    "label": "Y"
+    "label": "Y",
+    "is_destination": false
   },
   "Z.mp3": {
-    "label": "Z"
+    "label": "Z",
+    "is_destination": false
   }
 }

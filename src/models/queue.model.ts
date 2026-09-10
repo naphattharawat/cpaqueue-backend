@@ -162,6 +162,14 @@ export async function cancelQueue(slotId: string) {
   return current || null;
 }
 
+export async function getCurrentQueueCall(slotId: string) {
+  return cpaDb('opd_qs_call')
+    .select('slot_id', 'room_id', 'location_id', 'call_status', 'call_datetime')
+    .where({ slot_id: String(slotId) })
+    .orderBy('call_datetime', 'desc')
+    .first();
+}
+
 function patientName(row: any) {
   const name = `${row?.fname || ''} ${row?.lname || ''}`.trim();
   return name ? `คุณ${name}` : '';

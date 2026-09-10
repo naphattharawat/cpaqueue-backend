@@ -52,6 +52,7 @@ ttsRouter.get('/call', async (req, res, next) => {
     const roomType = String(req.query.room_type ?? config?.recorded_room_type ?? defaultRoomType()).trim() || defaultRoomType();
     const roomLabel = String(req.query.room_label ?? config?.google_room_label ?? '').trim();
     const voiceRate = normalizeVoiceRate(req.query.voice_rate ?? config?.voice_rate ?? 1);
+    const numberMode = normalizeNumberMode(req.query.number_mode ?? config?.recorded_number_mode);
     if (!queue) return res.status(400).send('No queue provided');
 
     const text = buildCallText(queue, roomType, room, roomLabel);
@@ -60,7 +61,8 @@ ttsRouter.get('/call', async (req, res, next) => {
         provider: 'recorded',
         text,
         voice_rate: voiceRate,
-        files: buildRecordedFiles(queue, roomType, room),
+        number_mode: numberMode,
+        files: buildRecordedFiles(queue, roomType, room, numberMode),
       });
     }
 
@@ -82,18 +84,41 @@ function buildCallText(queue: string, roomType: string, room: string, roomLabelO
   return `${roomTypeText.please} ${qSpelled} ${roomLabel}${room ? ` ${room}` : ''} ค่ะ`;
 }
 
-function buildRecordedFiles(queue: string, roomType: string, room: string) {
+function buildRecordedFiles(queue: string, roomType: string, room: string, numberMode: 'digits' | 'number') {
   const suffix = recordedSuffixToken();
-  const tokens = ['please', ...splitAudioTokens(queue), roomType, ...splitAudioTokens(room), suffix === 'silent' ? '' : suffix];
+  const tokens = ['please', ...splitAudioTokens(queue, numberMode), roomType, ...splitAudioTokens(room, numberMode), suffix === 'silent' ? '' : suffix];
   return tokens.filter(Boolean).map(token => audioUrl(token));
 }
 
-function splitAudioTokens(value: string) {
-  return value
-    .replace(/\s+/g, '')
-    .split('')
-    .filter(Boolean)
-    .map(token => token.toLowerCase());
+function splitAudioTokens(value: string, mode: 'digits' | 'number') {
+  const compact = value.replace(/\s+/g, '');
+  if (mode === 'digits') return compact.split('').filter(Boolean).map(token => token.toLowerCase());
+  return (compact.match(/\d+|[^\d]/g) || []).flatMap(token => /^\d+$/.test(token) ? thaiNumberTokens(token) : [token.toLowerCase()]);
+}
+
+function thaiNumberTokens(value: string) {
+  const normalized = value.replace(/^0+(?=\d)/, '');
+  if (!normalized || normalized === '0') return ['0'];
+  if (normalized.length > 5) return value.split('');
+  const number = Number(normalized);
+  const tokens: string[] = [];
+  const places = [10000, 1000, 100, 10, 1];
+  let remaining = number;
+  for (const place of places) {
+    const digit = Math.floor(remaining / place);
+    remaining %= place;
+    if (!digit) continue;
+    if (place === 10) {
+      if (digit === 1) tokens.push('10');
+      else if (digit === 2) tokens.push('20');
+      else tokens.push(String(digit), '10');
+    } else if (place === 1) {
+      tokens.push(digit === 1 && number >= 10 ? '11' : String(digit));
+    } else {
+      tokens.push(String(digit), String(place));
+    }
+  }
+  return tokens;
 }
 
 function audioUrl(token: string) {
@@ -117,7 +142,12 @@ async function getLocationVoiceConfig(locationId: string) {
     .where({ location_id: locationId })
     .first();
   if (!row) return null;
-  return { ...row, google_room_label: parseSettings(row.settings_json).google_room_label || '' };
+  const settings = parseSettings(row.settings_json);
+  return {
+    ...row,
+    google_room_label: settings.google_room_label || '',
+    recorded_number_mode: normalizeNumberMode(settings.recorded_number_mode),
+  };
 }
 
 function parseSettings(value: any) {
@@ -134,4 +164,8 @@ function normalizeVoiceRate(value: any) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 1;
   return Math.min(1.5, Math.max(0.7, n));
+}
+
+function normalizeNumberMode(value: any): 'digits' | 'number' {
+  return value === 'number' ? 'number' : 'digits';
 }

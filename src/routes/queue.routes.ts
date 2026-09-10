@@ -41,7 +41,7 @@ queueRouter.get('/display-devices/display', rateLimit({ keyPrefix: 'display-devi
     if (!device) return res.status(404).json({ ok: false, error: 'Display device not found' });
     const roomIds = (device.room_ids || []).map(Number).filter(Boolean);
     if (device.device_type === 'single') {
-      return res.json(await getDisplayData(String(device.location_id), String(roomIds[0] || ''), ''));
+      return res.json(await getMultiDisplayData([...new Set<number>(roomIds)]));
     }
     if (device.device_type === 'room-list') {
       return res.json(await getRoomListDisplayData([...new Set<number>(roomIds)], Number(device.settings?.queue_limit || 6)));
@@ -88,8 +88,8 @@ queueRouter.get('/location-configs', async (_req, res, next) => {
   try { res.json(ok(await LocationConfig.listLocationConfigs())); } catch (e) { next(e); }
 });
 queueRouter.get('/location-configs/voice-types', (_req, res) => res.json(ok(LocationConfig.voiceTypes)));
-queueRouter.get('/audio-files', async (_req, res, next) => {
-  try { res.json(ok(await Audio.listAudioFiles())); } catch (e) { next(e); }
+queueRouter.get('/audio-files', async (req, res, next) => {
+  try { res.json(ok(await Audio.listAudioFiles(req.query.destination === '1'))); } catch (e) { next(e); }
 });
 queueRouter.post('/audio-files', audioUpload.single('audio_file'), async (req, res, next) => {
   try {
@@ -100,7 +100,15 @@ queueRouter.post('/audio-files', audioUpload.single('audio_file'), async (req, r
       await fs.rm(req.file.path, { force: true });
       return res.status(400).json({ status: 'error', message: 'Unsupported audio type' });
     }
-    res.json(ok(await Audio.addAudioFile({ tempPath: req.file.path, originalName: req.file.originalname, key: req.body.key, label: req.body.label, ext: detected.ext })));
+    res.json(ok(await Audio.addAudioFile({
+      tempPath: req.file.path,
+      originalName: req.file.originalname,
+      key: req.body.key,
+      label: req.body.label,
+      isDestination: req.body.is_destination === 'true' || req.body.is_destination === '1',
+      replaceSystem: req.body.replace_system === 'true' || req.body.replace_system === '1',
+      ext: detected.ext,
+    })));
   } catch (e) { next(e); }
 });
 queueRouter.put('/audio-files', async (req, res, next) => {
@@ -174,9 +182,12 @@ queueRouter.post('/hold', async (req, res, next) => {
     const slot = String(req.body.slot_id);
     const rows = await Queue.getQueues(String(req.body.location_id ?? ''), []);
     const found: any = rows.find((q: any) => String(q.opd_qs_slot_id) === slot);
-    const result = await Queue.logQueueCall({ slotId: slot, roomId: String(req.body.room_id ?? found?.opd_qs_room_id ?? ''), status: 'W' });
+    const current = await Queue.getCurrentQueueCall(slot);
+    const roomId = String(current?.room_id ?? req.body.room_id ?? found?.opd_qs_room_id ?? '');
+    if (!roomId) return res.status(400).json({ status: 'error', message: 'ไม่พบห้องที่เรียกคิวนี้' });
+    const result = await Queue.logQueueCall({ slotId: slot, roomId, status: 'W' });
     logQueueAction({ action: 'hold', slotId: slot, detail: result.detail, room: result.room, user: req.session.user, ip: req.ip }).catch(err => console.warn('Queue hold log failed:', err));
-    wsHub.broadcastQueueChanged({ action: 'hold', slotId: slot, roomId: req.body.room_id ?? found?.opd_qs_room_id, locationId: result.room?.opd_qs_location_id });
+    wsHub.broadcastQueueChanged({ action: 'hold', slotId: slot, roomId, locationId: result.room?.opd_qs_location_id });
     res.json({ status: 'success' });
   } catch (e) { next(e); }
 });

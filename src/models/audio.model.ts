@@ -5,10 +5,15 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const assetsDir = process.env.ASSETS_DIR
   ? path.resolve(process.env.ASSETS_DIR)
-  : path.resolve(__dirname, '../assets');
+  : path.resolve(__dirname, '../../assets');
 const audioDir = path.join(assetsDir, 'audio');
 const indexPath = path.join(audioDir, 'index.json');
 const allowedExts = new Set(['mp3', 'wav', 'ogg']);
+const defaultDestinationKeys = new Set([
+  'cashier', 'channel', 'couter', 'counter', 'doctor_room',
+  'interview-point', 'interview-table', 'pay-cashier', 'pay-drug',
+  'receive-drug', 'screen-point', 'screen-table', 'table',
+]);
 
 export function getAudioDir() {
   return audioDir;
@@ -30,30 +35,59 @@ export async function detectAudioFile(filePath: string) {
   }
 }
 
-export async function listAudioFiles() {
+export async function listAudioFiles(destinationOnly = false) {
   await fs.mkdir(audioDir, { recursive: true });
   const meta = await readIndex();
   const files = await fs.readdir(audioDir).catch(() => []);
   const audioFiles = files.filter(file => allowedExts.has(extOf(file)));
-  return audioFiles.map(file => ({
-    key: path.basename(file, path.extname(file)),
-    file,
-    label: meta[file]?.label || path.basename(file, path.extname(file)),
-    uploaded: meta[file]?.uploaded || '',
-    url: `/assets/audio/${file}`,
-  })).sort((a, b) => String(a.label || a.key).localeCompare(String(b.label || b.key), 'en', { sensitivity: 'base' }));
+  return audioFiles.map(file => {
+    const key = path.basename(file, path.extname(file));
+    const isSystem = isSystemAudioKey(key);
+    return {
+      key,
+      file,
+      label: meta[file]?.label || key,
+      uploaded: meta[file]?.uploaded || '',
+      is_system: isSystem,
+      is_destination: !isSystem && typeof meta[file]?.is_destination === 'boolean'
+        ? meta[file].is_destination
+        : !isSystem && defaultDestinationKeys.has(key.toLowerCase()),
+      url: `/assets/audio/${file}`,
+    };
+  }).filter(item => !destinationOnly || item.is_destination)
+    .sort((a, b) => String(a.label || a.key).localeCompare(String(b.label || b.key), 'en', { sensitivity: 'base' }));
 }
 
-export async function addAudioFile(input: { tempPath: string; originalName: string; key: string; label: string; ext?: string }) {
+export async function addAudioFile(input: { tempPath: string; originalName: string; key: string; label: string; isDestination?: boolean; replaceSystem?: boolean; ext?: string }) {
   await fs.mkdir(audioDir, { recursive: true });
   const ext = input.ext || extOf(input.originalName);
   if (!allowedExts.has(ext)) throw new Error('Unsupported audio type');
   const safeKey = safeAudioKey(input.key || path.basename(input.originalName, path.extname(input.originalName)));
   if (!safeKey) throw new Error('Missing audio key');
   const file = `${safeKey}.${ext}`;
-  await fs.rename(input.tempPath, path.join(audioDir, file));
   const meta = await readIndex();
-  meta[file] = { label: input.label || safeKey, uploaded: new Date().toISOString().slice(0, 19).replace('T', ' ') };
+  const existingFiles = await fs.readdir(audioDir).catch(() => []);
+  const previousFile = existingFiles.find(name => path.basename(name, path.extname(name)).toLowerCase() === safeKey);
+  const previousMeta = previousFile ? meta[previousFile] : undefined;
+  if (isSystemAudioKey(safeKey) && !input.replaceSystem) {
+    await fs.rm(input.tempPath, { force: true });
+    throw Object.assign(new Error('System audio must be replaced from its existing item'), { status: 400 });
+  }
+  if (isSystemAudioKey(safeKey) && previousFile && extOf(previousFile) !== ext) {
+    await fs.rm(input.tempPath, { force: true });
+    throw Object.assign(new Error(`System audio replacement must use .${extOf(previousFile)}`), { status: 400 });
+  }
+  await fs.copyFile(input.tempPath, path.join(audioDir, file));
+  await fs.rm(input.tempPath, { force: true });
+  if (previousFile && previousFile !== file) await fs.rm(path.join(audioDir, previousFile), { force: true });
+  if (previousFile && previousFile !== file) delete meta[previousFile];
+  const isSystem = isSystemAudioKey(safeKey);
+  meta[file] = {
+    ...(previousMeta || {}),
+    label: input.label || previousMeta?.label || safeKey,
+    is_destination: isSystem ? false : !!input.isDestination,
+    uploaded: new Date().toISOString().slice(0, 19).replace('T', ' '),
+  };
   await saveIndex(meta);
   return listAudioFiles();
 }
@@ -63,7 +97,11 @@ export async function updateAudioFiles(items: any[]) {
   const allowed = new Set(current.map(item => item.file));
   const meta = await readIndex();
   for (const item of items) {
-    if (allowed.has(item.file)) meta[item.file] = { ...(meta[item.file] || {}), label: String(item.label || item.key || '') };
+    if (allowed.has(item.file)) meta[item.file] = {
+      ...(meta[item.file] || {}),
+      label: String(item.label || item.key || ''),
+      is_destination: isSystemAudioKey(item.key || path.basename(item.file, path.extname(item.file))) ? false : !!item.is_destination,
+    };
   }
   await saveIndex(meta);
   return listAudioFiles();
@@ -71,6 +109,7 @@ export async function updateAudioFiles(items: any[]) {
 
 export async function deleteAudioFile(file: string) {
   const safe = path.basename(file);
+  if (isSystemAudioKey(path.basename(safe, path.extname(safe)))) throw Object.assign(new Error('System audio files cannot be deleted'), { status: 400 });
   await fs.rm(path.join(audioDir, safe), { force: true });
   const meta = await readIndex();
   delete meta[safe];
@@ -97,5 +136,13 @@ function extOf(file: string) {
 }
 
 function safeAudioKey(key: string) {
-  return String(key || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  return String(key || '').trim().toLowerCase().replace(/[^a-z0-9_\-\u0E00-\u0E7F]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+}
+
+function isSystemAudioKey(key: string) {
+  const value = String(key || '').trim().toLowerCase();
+  return /^(?:[0-9]|10|11|20|100|1000|10000)$/.test(value)
+    || /^[a-z]$/.test(value)
+    || /^[ก-ฮ]$/.test(value)
+    || ['please', 'number', 'ka', 'silent'].includes(value);
 }

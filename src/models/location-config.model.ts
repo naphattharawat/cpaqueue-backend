@@ -50,6 +50,10 @@ export async function listLocationConfigs() {
       pooled_call_enabled: !!Number(config.pooled_call_enabled || 0),
       settings: parseSettings(config.settings_json),
       google_room_label: parseSettings(config.settings_json).google_room_label || 'ห้องตรวจ',
+      recorded_number_mode: normalizeRecordedNumberMode(parseSettings(config.settings_json).recorded_number_mode),
+      queue_colors: normalizeQueueColors(parseSettings(config.settings_json).queue_colors),
+      queue_font_weight: normalizeQueueFontWeight(parseSettings(config.settings_json).queue_font_weight),
+      display_font_family: normalizeDisplayFontFamily(parseSettings(config.settings_json).display_font_family),
       default_room_ids: splitCsv(config.default_room_ids || ''),
       devices: devicesByLocation.get(id) || [],
     };
@@ -67,7 +71,14 @@ export async function updateLocationConfig(locationId: string, body: any) {
     call_repeat_count: normalizeCallRepeatCount(body.call_repeat_count),
     pooled_call_enabled: body.pooled_call_enabled ? 1 : 0,
     default_room_ids: Array.isArray(body.default_room_ids) ? body.default_room_ids.join(',') : String(body.default_room_ids || ''),
-    settings_json: JSON.stringify({ ...(body.settings || {}), google_room_label: body.google_room_label || body.settings?.google_room_label || '' }),
+    settings_json: JSON.stringify({
+      ...(body.settings || {}),
+      google_room_label: body.google_room_label || body.settings?.google_room_label || '',
+      recorded_number_mode: normalizeRecordedNumberMode(body.recorded_number_mode || body.settings?.recorded_number_mode),
+      queue_colors: normalizeQueueColors(body.queue_colors || body.settings?.queue_colors),
+      queue_font_weight: normalizeQueueFontWeight(body.queue_font_weight || body.settings?.queue_font_weight),
+      display_font_family: normalizeDisplayFontFamily(body.display_font_family || body.settings?.display_font_family),
+    }),
   };
   await cpaDb('service_location_config').insert(payload).onConflict('location_id').merge(payload);
   return getLocationConfig(locationId);
@@ -87,11 +98,12 @@ export async function getLocationConfig(locationId: string) {
 export async function createDisplayDevice(locationId: string, body: any) {
   const token = `dq_${crypto.randomBytes(32).toString('hex')}`;
   const tokenHash = hashToken(token);
+  const deviceType = normalizeDeviceType(body.device_type);
   const [deviceId] = await cpaDb('display_devices').insert({
     device_name: String(body.device_name || 'Display device'),
-    device_type: normalizeDeviceType(body.device_type),
+    device_type: deviceType,
     location_id: locationId,
-    room_ids: Array.isArray(body.room_ids) ? body.room_ids.join(',') : String(body.room_ids || ''),
+    room_ids: normalizeDeviceRoomIds(body.room_ids, deviceType),
     token_hash: tokenHash,
     allowed_ips: Array.isArray(body.allowed_ips) ? body.allowed_ips.join(',') : String(body.allowed_ips || ''),
     active: body.active === false ? 0 : 1,
@@ -101,10 +113,11 @@ export async function createDisplayDevice(locationId: string, body: any) {
 }
 
 export async function updateDisplayDevice(deviceId: string, body: any) {
+  const deviceType = normalizeDeviceType(body.device_type);
   await cpaDb('display_devices').where({ device_id: deviceId }).update({
     device_name: String(body.device_name || 'Display device'),
-    device_type: normalizeDeviceType(body.device_type),
-    room_ids: Array.isArray(body.room_ids) ? body.room_ids.join(',') : String(body.room_ids || ''),
+    device_type: deviceType,
+    room_ids: normalizeDeviceRoomIds(body.room_ids, deviceType),
     allowed_ips: Array.isArray(body.allowed_ips) ? body.allowed_ips.join(',') : String(body.allowed_ips || ''),
     active: body.active === false ? 0 : 1,
     settings_json: JSON.stringify(body.settings || {}),
@@ -170,6 +183,12 @@ function normalizeDeviceType(value: any) {
   return displayDeviceTypes.has(type) ? type : 'multi';
 }
 
+function normalizeDeviceRoomIds(value: any, deviceType: string) {
+  const roomIds = Array.isArray(value) ? value.map(String) : splitCsv(String(value || ''));
+  const uniqueRoomIds = [...new Set(roomIds.map(item => item.trim()).filter(Boolean))];
+  return uniqueRoomIds.join(',');
+}
+
 function splitCsv(value: string) {
   return String(value || '').split(',').map(item => item.trim()).filter(Boolean);
 }
@@ -198,4 +217,34 @@ function normalizeCallRepeatCount(value: any) {
   const n = Math.round(Number(value));
   if (!Number.isFinite(n)) return 1;
   return Math.min(5, Math.max(1, n));
+}
+
+function normalizeRecordedNumberMode(value: any) {
+  return value === 'number' ? 'number' : 'digits';
+}
+
+function normalizeQueueColors(value: any) {
+  const colors = value && typeof value === 'object' ? value : {};
+  return {
+    active_text: normalizeColor(colors.active_text, '#7c2d12'),
+    active_border: normalizeColor(colors.active_border, '#f59e0b'),
+    previous_text: normalizeColor(colors.previous_text, '#7c2d12'),
+    previous_border: normalizeColor(colors.previous_border, '#f59e0b'),
+    called_text: normalizeColor(colors.called_text, '#64748b'),
+    called_border: normalizeColor(colors.called_border, '#cbd5e1'),
+  };
+}
+
+function normalizeColor(value: any, fallback: string) {
+  const color = String(value || '').trim();
+  return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : fallback;
+}
+
+function normalizeQueueFontWeight(value: any) {
+  return ['400', '700', '900'].includes(String(value)) ? String(value) : '900';
+}
+
+function normalizeDisplayFontFamily(value: any) {
+  const key = String(value || '').trim();
+  return ['kanit', 'anuphan', 'ibm-plex-sans-thai', 'noto-sans-thai', 'prompt', 'sarabun'].includes(key) ? key : 'kanit';
 }
