@@ -21,6 +21,7 @@ export const voiceTypes = [
   'silent',
 ];
 const displayDeviceTypes = new Set(['single', 'multi', 'room-list']);
+const encryptedTokenSetting = '_display_token';
 
 export async function listLocationConfigs() {
   const locations = await hospitalDb('opd_qs_location')
@@ -34,7 +35,7 @@ export async function listLocationConfigs() {
   const devicesByLocation = new Map<string, any[]>();
   for (const device of devices) {
     const key = String(device.location_id);
-    devicesByLocation.set(key, [...(devicesByLocation.get(key) || []), normalizeDevice(device)]);
+    devicesByLocation.set(key, [...(devicesByLocation.get(key) || []), normalizeDevice(device, true)]);
   }
   return locations.map((location: any) => {
     const id = String(location.opd_qs_location_id);
@@ -109,28 +110,39 @@ export async function createDisplayDevice(locationId: string, body: any) {
     token_hash: tokenHash,
     allowed_ips: Array.isArray(body.allowed_ips) ? body.allowed_ips.join(',') : String(body.allowed_ips || ''),
     active: body.active === false ? 0 : 1,
-    settings_json: JSON.stringify(body.settings || {}),
+    settings_json: JSON.stringify({ ...(body.settings || {}), [encryptedTokenSetting]: encryptToken(token) }),
   });
-  return { ...(await getDevice(deviceId)), setup_token: token };
+  return { ...(await getDevice(deviceId, true)), setup_token: token };
 }
 
 export async function updateDisplayDevice(deviceId: string, body: any) {
   const deviceType = normalizeDeviceType(body.device_type);
+  const current = await cpaDb('display_devices').select('settings_json').where({ device_id: deviceId }).first();
+  const currentSettings = parseSettings(current?.settings_json);
   await cpaDb('display_devices').where({ device_id: deviceId }).update({
     device_name: String(body.device_name || 'Display device'),
     device_type: deviceType,
     room_ids: normalizeDeviceRoomIds(body.room_ids, deviceType),
     allowed_ips: Array.isArray(body.allowed_ips) ? body.allowed_ips.join(',') : String(body.allowed_ips || ''),
     active: body.active === false ? 0 : 1,
-    settings_json: JSON.stringify(body.settings || {}),
+    settings_json: JSON.stringify({
+      ...(body.settings || {}),
+      ...(currentSettings[encryptedTokenSetting] ? { [encryptedTokenSetting]: currentSettings[encryptedTokenSetting] } : {}),
+    }),
   });
-  return getDevice(deviceId);
+  return getDevice(deviceId, true);
 }
 
 export async function rotateDisplayDeviceToken(deviceId: string) {
   const token = `dq_${crypto.randomBytes(32).toString('hex')}`;
-  await cpaDb('display_devices').where({ device_id: deviceId }).update({ token_hash: hashToken(token) });
-  return { ...(await getDevice(deviceId)), setup_token: token };
+  const current = await cpaDb('display_devices').select('settings_json').where({ device_id: deviceId }).first();
+  const settings = parseSettings(current?.settings_json);
+  settings[encryptedTokenSetting] = encryptToken(token);
+  await cpaDb('display_devices').where({ device_id: deviceId }).update({
+    token_hash: hashToken(token),
+    settings_json: JSON.stringify(settings),
+  });
+  return { ...(await getDevice(deviceId, true)), setup_token: token };
 }
 
 export async function deleteDisplayDevice(deviceId: string) {
@@ -162,22 +174,50 @@ export function hashToken(token: string) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-export async function getDevice(deviceId: string | number) {
+export async function getDevice(deviceId: string | number, exposeToken = false) {
   const row = await cpaDb('display_devices')
     .select('device_id', 'device_name', 'device_type', 'location_id', 'room_ids', 'allowed_ips', 'active', 'settings_json', 'last_seen_at', 'last_seen_ip', 'created_at', 'updated_at')
     .where({ device_id: deviceId })
     .first();
-  return row ? normalizeDevice(row) : null;
+  return row ? normalizeDevice(row, exposeToken) : null;
 }
 
-function normalizeDevice(row: any) {
+function normalizeDevice(row: any, exposeToken = false) {
+  const settings = parseSettings(row.settings_json);
+  const encryptedToken = settings[encryptedTokenSetting];
+  delete settings[encryptedTokenSetting];
   return {
     ...row,
     active: !!row.active,
     room_ids: splitCsv(row.room_ids || ''),
     allowed_ips: splitCsv(row.allowed_ips || ''),
-    settings: parseSettings(row.settings_json),
+    settings_json: undefined,
+    settings,
+    ...(exposeToken && encryptedToken ? { setup_token: decryptToken(encryptedToken) } : {}),
   };
+}
+
+function tokenEncryptionKey() {
+  return crypto.createHash('sha256').update(String(process.env.SESSION_SECRET || '')).digest();
+}
+
+function encryptToken(token: string) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', tokenEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(token, 'utf8'), cipher.final()]);
+  return [iv, cipher.getAuthTag(), encrypted].map(value => value.toString('base64url')).join('.');
+}
+
+function decryptToken(payload: string) {
+  try {
+    const [ivText, tagText, encryptedText] = String(payload).split('.');
+    if (!ivText || !tagText || !encryptedText) return '';
+    const decipher = crypto.createDecipheriv('aes-256-gcm', tokenEncryptionKey(), Buffer.from(ivText, 'base64url'));
+    decipher.setAuthTag(Buffer.from(tagText, 'base64url'));
+    return Buffer.concat([decipher.update(Buffer.from(encryptedText, 'base64url')), decipher.final()]).toString('utf8');
+  } catch {
+    return '';
+  }
 }
 
 function normalizeDeviceType(value: any) {
