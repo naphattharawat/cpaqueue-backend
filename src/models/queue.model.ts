@@ -131,24 +131,35 @@ export async function logQueueCall(input: { slotId: string; roomId: string; stat
     .leftJoin('opd_qs_location as l', 'r.opd_qs_location_id', 'l.opd_qs_location_id')
     .where('r.opd_qs_room_id', input.roomId)
     .first();
-  if (!d || !r) return { detail: d, room: r };
+  if (!d) {
+    const error: any = new Error('ไม่พบข้อมูลคิวนี้');
+    error.status = 404;
+    throw error;
+  }
+  if (!r) {
+    const error: any = new Error('ไม่พบห้องตรวจปลายทาง');
+    error.status = 404;
+    throw error;
+  }
   if (String(d.slot_location_id) !== String(r.opd_qs_location_id)) {
     const error: any = new Error('Queue and room are not in the same service location');
     error.status = 400;
     throw error;
   }
-  await cpaDb('opd_qs_call').where({ slot_id: String(input.slotId) }).delete();
-  await cpaDb('opd_qs_call').insert({
-    slot_id: String(input.slotId),
-    hn: d.hn,
-    vn: d.vn,
-    queue_no: d.queue_slot_number,
-    patient_name: patientName(d),
-    location_id: r.opd_qs_location_id,
-    room_id: input.roomId,
-    room_name: r.opd_qs_room_name,
-    call_status: input.status,
-    call_datetime: new Date(),
+  await cpaDb.transaction(async (trx) => {
+    await trx('opd_qs_call').where({ slot_id: String(input.slotId) }).delete();
+    await trx('opd_qs_call').insert({
+      slot_id: String(input.slotId),
+      hn: d.hn,
+      vn: d.vn,
+      queue_no: d.queue_slot_number,
+      patient_name: patientName(d),
+      location_id: r.opd_qs_location_id,
+      room_id: input.roomId,
+      room_name: r.opd_qs_room_name,
+      call_status: input.status,
+      call_datetime: new Date(),
+    });
   });
   return { detail: { ...d, patient_name: patientName(d) }, room: r };
 }
