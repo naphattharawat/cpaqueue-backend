@@ -265,15 +265,24 @@ function normalizeRecordedNumberMode(value: any) {
   return value === 'number' ? 'number' : 'digits';
 }
 
-function normalizeQueueColors(value: any) {
+export function normalizeQueueColors(value: any) {
   const colors = value && typeof value === 'object' ? value : {};
   return {
     active_text: normalizeColor(colors.active_text, '#7c2d12'),
     active_border: normalizeColor(colors.active_border, '#f59e0b'),
+    active_text_stroke: normalizeBackgroundColor(colors.active_text_stroke),
+    active_pulse1: normalizeBackgroundColor(colors.active_pulse1),
+    active_pulse2: normalizeBackgroundColor(colors.active_pulse2),
     previous_text: normalizeColor(colors.previous_text, '#7c2d12'),
     previous_border: normalizeColor(colors.previous_border, '#f59e0b'),
+    previous_text_stroke: normalizeBackgroundColor(colors.previous_text_stroke),
+    previous_bg: normalizeBackgroundColor(colors.previous_bg),
     called_text: normalizeColor(colors.called_text, '#64748b'),
     called_border: normalizeColor(colors.called_border, '#cbd5e1'),
+    called_text_stroke: normalizeBackgroundColor(colors.called_text_stroke),
+    called_bg: normalizeBackgroundColor(colors.called_bg),
+    page_bg: normalizeBackgroundColor(colors.page_bg),
+    text_stroke_width: normalizeTextStrokeWidth(colors.text_stroke_width),
   };
 }
 
@@ -282,11 +291,33 @@ function normalizeColor(value: any, fallback: string) {
   return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : fallback;
 }
 
-function normalizeQueueFontWeight(value: any) {
+function normalizeTextStrokeWidth(value: any) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(4, Math.max(0, Math.round(n * 2) / 2));
+}
+
+// Empty string means "no custom background configured" — the queue box keeps its current
+// default background. Only a validated #rrggbb or rgba(...) value overrides it.
+function normalizeBackgroundColor(value: any) {
+  const color = String(value || '').trim();
+  if (!color) return '';
+  if (/^#[0-9a-f]{6}$/i.test(color)) return color.toLowerCase();
+  const m = color.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*(0|1|0?\.\d+)\s*)?\)$/i);
+  if (!m) return '';
+  const clamp255 = (n: string) => Math.min(255, Math.max(0, parseInt(n, 10)));
+  const r = clamp255(m[1]);
+  const g = clamp255(m[2]);
+  const b = clamp255(m[3]);
+  const a = m[4] !== undefined ? Math.min(1, Math.max(0, Number(m[4]))) : 1;
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+export function normalizeQueueFontWeight(value: any) {
   return ['400', '700', '900'].includes(String(value)) ? String(value) : '900';
 }
 
-function normalizeDisplayFontFamily(value: any) {
+export function normalizeDisplayFontFamily(value: any) {
   const key = String(value || '').trim();
   return ['kanit', 'anuphan', 'ibm-plex-sans-thai', 'noto-sans-thai', 'prompt', 'sarabun'].includes(key) ? key : 'kanit';
 }

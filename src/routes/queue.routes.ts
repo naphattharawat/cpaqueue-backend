@@ -7,6 +7,7 @@ import { checkQueue } from '../models/check.model.js';
 import * as Media from '../models/media.model.js';
 import * as Audio from '../models/audio.model.js';
 import * as LocationConfig from '../models/location-config.model.js';
+import * as ColorDefaults from '../models/color-defaults.model.js';
 import { requireAdmin, requireAuth } from '../middleware/auth.middleware.js';
 import { rateLimit } from '../security.js';
 import { wsHub } from '../wsHub.js';
@@ -51,7 +52,7 @@ queueRouter.get('/media', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-queueRouter.use(['/media', '/media/*', '/location-configs', '/location-configs/*', '/audio-files', '/audio-files/*', '/display-devices/*'], requireAdmin);
+queueRouter.use(['/media', '/media/*', '/location-configs', '/location-configs/*', '/audio-files', '/audio-files/*', '/display-devices/*', '/queue-color-defaults'], requireAdmin);
 queueRouter.use(requireAuth);
 
 queueRouter.get('/locations', async (_req, res, next) => { try { res.json(ok(await Queue.getLocations())); } catch (e) { next(e); } });
@@ -81,6 +82,12 @@ queueRouter.get('/location-configs', async (_req, res, next) => {
   try { res.json(ok(await LocationConfig.listLocationConfigs())); } catch (e) { next(e); }
 });
 queueRouter.get('/location-configs/voice-types', (_req, res) => res.json(ok(LocationConfig.voiceTypes)));
+queueRouter.get('/queue-color-defaults', async (_req, res, next) => {
+  try { res.json(ok(await ColorDefaults.getQueueColorDefaults())); } catch (e) { next(e); }
+});
+queueRouter.put('/queue-color-defaults', async (req, res, next) => {
+  try { res.json(ok(await ColorDefaults.updateQueueColorDefaults(req.body))); } catch (e) { next(e); }
+});
 queueRouter.get('/display-devices/:deviceId/preview', async (req, res, next) => {
   try {
     const device = await LocationConfig.getDevice(req.params.deviceId);
