@@ -20,7 +20,7 @@ export const voiceTypes = [
   'table',
   'silent',
 ];
-const displayDeviceTypes = new Set(['single', 'multi', 'room-list']);
+const displayDeviceTypes = new Set(['single', 'dual', 'multi', 'room-list']);
 const encryptedTokenSetting = '_display_token';
 
 export async function listLocationConfigs() {
