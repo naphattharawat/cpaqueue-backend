@@ -1,6 +1,6 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { logLogin } from '../models/audit.model.js';
-import { rateLimit } from '../security.js';
+import { ensureCsrfToken, rateLimit } from '../security.js';
 import { authenticateLdap } from '../services/ldap.service.js';
 
 export const authRouter = Router();
@@ -10,15 +10,24 @@ authRouter.get('/me', (req, res) => {
 });
 
 authRouter.post('/login', rateLimit({ keyPrefix: 'auth-login', windowMs: 60_000, max: 10 }), async (req, res, next) => {
+  let user;
   try {
-    const user = await authenticateLdap(String(req.body.username || ''), String(req.body.password || ''));
-    req.session.user = user;
-    logLogin({ username: user.username, displayName: user.displayName, role: user.roles?.join(',') || '', success: true, ip: req.ip, userAgent: req.get('user-agent') }).catch(logErr => console.warn('Login log failed:', logErr));
-    res.json({ status: 'success', data: user, csrfToken: req.session.csrfToken || null });
+    user = await authenticateLdap(String(req.body.username || ''), String(req.body.password || ''));
   } catch (err) {
     console.warn('Login failed:', err instanceof Error ? err.message : err);
     logLogin({ username: String(req.body.username || ''), success: false, failureReason: err instanceof Error ? err.message : String(err), ip: req.ip, userAgent: req.get('user-agent') }).catch(logErr => console.warn('Login log failed:', logErr));
-    res.status(401).json({ status: 'error', message: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
+    return res.status(401).json({ status: 'error', message: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
+  }
+
+  try {
+    await regenerateSession(req);
+    req.session.user = user;
+    ensureCsrfToken(req, res);
+    await saveSession(req);
+    logLogin({ username: user.username, displayName: user.displayName, role: user.roles?.join(',') || '', success: true, ip: req.ip, userAgent: req.get('user-agent') }).catch(logErr => console.warn('Login log failed:', logErr));
+    res.json({ status: 'success', data: user, csrfToken: req.session.csrfToken || null });
+  } catch (err) {
+    next(err);
   }
 });
 
@@ -31,3 +40,15 @@ authRouter.post('/logout', (req, res) => {
     res.json({ status: 'success' });
   });
 });
+
+function regenerateSession(req: Request) {
+  return new Promise<void>((resolve, reject) => {
+    req.session.regenerate((err: unknown) => err ? reject(err) : resolve());
+  });
+}
+
+function saveSession(req: Request) {
+  return new Promise<void>((resolve, reject) => {
+    req.session.save((err: unknown) => err ? reject(err) : resolve());
+  });
+}

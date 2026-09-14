@@ -5,8 +5,14 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 export function requireProductionConfig() {
   const missing: string[] = [];
-  if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET === 'change-this-session-secret') missing.push('SESSION_SECRET');
+  const sessionSecret = process.env.SESSION_SECRET || '';
+  if (sessionSecret.length < 32 || sessionSecret === 'change-this-session-secret') missing.push('SESSION_SECRET (minimum 32 characters)');
   if (isProduction && !process.env.CORS_ORIGIN) missing.push('CORS_ORIGIN');
+  if (isProduction && process.env.SESSION_SECURE !== 'true') missing.push('SESSION_SECURE=true');
+  if (isProduction && process.env.TRUST_PROXY !== 'true') missing.push('TRUST_PROXY=true');
+  if (isProduction && process.env.LDAP_TLS_REJECT_UNAUTHORIZED === 'false') missing.push('LDAP_TLS_REJECT_UNAUTHORIZED=true');
+  if (isProduction && !String(process.env.LDAP_URL || '').toLowerCase().startsWith('ldaps://')) missing.push('LDAP_URL must use ldaps://');
+  if (isProduction && corsOrigins().some(origin => !origin.startsWith('https://'))) missing.push('CORS_ORIGIN must contain HTTPS origins only');
   if (missing.length) {
     throw new Error(`Missing required security config: ${missing.join(', ')}`);
   }
