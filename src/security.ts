@@ -12,7 +12,9 @@ export function requireProductionConfig() {
   if (isProduction && process.env.TRUST_PROXY !== 'true') missing.push('TRUST_PROXY=true');
   if (isProduction && process.env.LDAP_TLS_REJECT_UNAUTHORIZED === 'false') missing.push('LDAP_TLS_REJECT_UNAUTHORIZED=true');
   if (isProduction && !String(process.env.LDAP_URL || '').toLowerCase().startsWith('ldaps://')) missing.push('LDAP_URL must use ldaps://');
-  if (isProduction && corsOrigins().some(origin => !origin.startsWith('https://'))) missing.push('CORS_ORIGIN must contain HTTPS origins only');
+  // 'file://' is allowed as-is: it's the origin Electron sends when the packaged desktop
+  // app loads its UI via win.loadFile() — there's no network transport to secure there.
+  if (isProduction && corsOrigins().some(origin => origin !== 'file://' && !origin.startsWith('https://'))) missing.push('CORS_ORIGIN must contain HTTPS (or file://) origins only');
   if (missing.length) {
     throw new Error(`Missing required security config: ${missing.join(', ')}`);
   }
