@@ -150,9 +150,21 @@ export async function getMultiDisplayData(roomIds: number[], deviceType?: string
     hn: c.hn,
   }));
 
+  const historyRaw = allCalls.filter(c => roomIds.includes(Number(c.room_id)) && c.call_status === 'N').slice(0, 20);
+  const historyDetails = await slotDetails(historyRaw.map(c => c.slot_id), []);
+  const historyOqueueMap = new Map(historyDetails.map((d: any) => [String(d.opd_qs_slot_id), d.oqueue]));
+  const called_history = historyRaw.map(c => ({
+    queue_no: c.queue_no,
+    oqueue: historyOqueueMap.get(String(c.slot_id)) ?? null,
+    room_id: c.room_id,
+    room_number: roomNumMap.get(String(c.room_id)) ?? '',
+    patient_name: c.patient_name,
+    hn: c.hn,
+  }));
+
   const locationId = roomsInfo[0]?.opd_qs_location_id || '';
   const displaySettings = await getDisplaySettings(locationId, deviceType);
-  return { status: 'success', rooms_data: roomsData, called_list, call_repeat_count: displaySettings.call_repeat_count, display_settings: displaySettings };
+  return { status: 'success', rooms_data: roomsData, called_list, called_history, call_repeat_count: displaySettings.call_repeat_count, display_settings: displaySettings };
 }
 
 export async function getRoomListDisplayData(roomIds: number[], limit = 6, deviceType?: string) {

@@ -5,25 +5,35 @@ import type session from 'express-session';
 import { WebSocketServer, WebSocket } from 'ws';
 import { resolveDisplayDevice } from './models/location-config.model.js';
 
-type Client = WebSocket & { topics?: Set<string> };
+type Client = WebSocket & { topics?: Set<string>; isAlive?: boolean };
 type AttachOptions = {
   sessionCookieName: string;
   sessionSecret: string;
   sessionStore: session.Store;
 };
 
+const HEARTBEAT_INTERVAL_MS = 20_000;
+
 export class WsHub {
   private wss?: WebSocketServer;
   private options?: AttachOptions;
+  private heartbeatTimer?: NodeJS.Timeout;
 
   attach(server: Server, options: AttachOptions) {
     this.options = options;
     this.wss = new WebSocketServer({ server, path: '/ws' });
     this.wss.on('connection', (socket: Client, req) => {
       socket.topics = new Set();
+      socket.isAlive = true;
+      socket.on('pong', () => { socket.isAlive = true; });
       socket.on('message', raw => {
         try {
           const msg = JSON.parse(String(raw));
+          if (msg.type === 'ping') {
+            socket.isAlive = true;
+            socket.send(JSON.stringify({ type: 'pong' }));
+            return;
+          }
           if (msg.type === 'subscribe' && Array.isArray(msg.topics)) {
             this.authorizeTopics(req, msg.topics.map(String), String(msg.deviceToken || '')).then(topics => {
               socket.topics = topics;
@@ -38,6 +48,15 @@ export class WsHub {
         }
       });
     });
+    this.heartbeatTimer = setInterval(() => {
+      this.wss?.clients.forEach(client => {
+        const c = client as Client;
+        if (c.isAlive === false) { c.terminate(); return; }
+        c.isAlive = false;
+        c.ping();
+      });
+    }, HEARTBEAT_INTERVAL_MS);
+    this.wss.on('close', () => { if (this.heartbeatTimer) clearInterval(this.heartbeatTimer); });
   }
 
   broadcastQueueChanged(payload: Record<string, unknown>) {
