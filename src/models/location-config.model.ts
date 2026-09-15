@@ -20,7 +20,8 @@ export const voiceTypes = [
   'table',
   'silent',
 ];
-const displayDeviceTypes = new Set(['single', 'dual', 'multi', 'room-list']);
+const displayDeviceTypes = new Set(['single', 'dual', 'multi', 'multi2', 'room-list']);
+const overridableDeviceTypes = ['single', 'dual', 'multi', 'multi2', 'room-list'];
 const encryptedTokenSetting = '_display_token';
 
 export async function listLocationConfigs() {
@@ -56,6 +57,7 @@ export async function listLocationConfigs() {
       queue_colors: normalizeQueueColors(parseSettings(config.settings_json).queue_colors),
       queue_font_weight: normalizeQueueFontWeight(parseSettings(config.settings_json).queue_font_weight),
       display_font_family: normalizeDisplayFontFamily(parseSettings(config.settings_json).display_font_family),
+      type_overrides: normalizeTypeOverrides(parseSettings(config.settings_json).type_overrides),
       default_room_ids: splitCsv(config.default_room_ids || ''),
       devices: devicesByLocation.get(id) || [],
     };
@@ -81,6 +83,7 @@ export async function updateLocationConfig(locationId: string, body: any) {
       queue_colors: normalizeQueueColors(body.queue_colors || body.settings?.queue_colors),
       queue_font_weight: normalizeQueueFontWeight(body.queue_font_weight || body.settings?.queue_font_weight),
       display_font_family: normalizeDisplayFontFamily(body.display_font_family || body.settings?.display_font_family),
+      type_overrides: normalizeTypeOverrides(body.type_overrides || body.settings?.type_overrides),
     }),
   };
   await cpaDb('service_location_config').insert(payload).onConflict('location_id').merge(payload);
@@ -320,4 +323,23 @@ export function normalizeQueueFontWeight(value: any) {
 export function normalizeDisplayFontFamily(value: any) {
   const key = String(value || '').trim();
   return ['kanit', 'anuphan', 'ibm-plex-sans-thai', 'noto-sans-thai', 'prompt', 'sarabun'].includes(key) ? key : 'kanit';
+}
+
+// Per-device-type color/font overrides for a location. A type with no entry here simply
+// falls back to the location's own queue_colors/queue_font_weight/display_font_family —
+// existing locations that have never set an override keep rendering exactly as before.
+export function normalizeTypeOverrides(value: any) {
+  const raw = value && typeof value === 'object' ? value : {};
+  const result: Record<string, any> = {};
+  for (const type of overridableDeviceTypes) {
+    const entry = raw[type];
+    if (entry && typeof entry === 'object') {
+      result[type] = {
+        queue_colors: normalizeQueueColors(entry.queue_colors),
+        queue_font_weight: normalizeQueueFontWeight(entry.queue_font_weight),
+        display_font_family: normalizeDisplayFontFamily(entry.display_font_family),
+      };
+    }
+  }
+  return result;
 }

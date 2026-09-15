@@ -42,7 +42,7 @@ export async function getDisplayData(locationId: string, roomId = '', doctorCode
     .select('slot_id', 'call_status')
     .where('room_id', roomId)
     .whereBetween('call_datetime', todayRange()) : [];
-  const excluded = new Set(callLogs.filter((l: any) => ['N', 'W'].includes(l.call_status)).map((l: any) => String(l.slot_id)));
+  const excluded = new Set(callLogs.filter((l: any) => ['N', 'W', 'P'].includes(l.call_status)).map((l: any) => String(l.slot_id)));
   const called = callLogs.filter((l: any) => l.call_status === 'N').length;
 
   const slotQuery = hospitalDb('opd_qs_slot as a')
@@ -79,7 +79,7 @@ async function slotDetails(slotIds: string[], logs: any[]) {
   }).filter(Boolean);
 }
 
-export async function getMultiDisplayData(roomIds: number[]) {
+export async function getMultiDisplayData(roomIds: number[], deviceType?: string) {
   if (!roomIds.length) return { status: 'success', rooms_data: [], called_list: [] };
   const allCalls = await cpaDb('opd_qs_call')
     .select('call_id', 'slot_id', 'room_id', 'call_status', 'queue_no', 'call_datetime', 'hn', 'patient_name')
@@ -96,7 +96,7 @@ export async function getMultiDisplayData(roomIds: number[]) {
       activeByRoom.set(rid, call);
       if (!latestActiveRoomId) latestActiveRoomId = rid;
     }
-    if (['N', 'W'].includes(call.call_status)) excludedSlotIds.add(sid);
+    if (['N', 'W', 'P'].includes(call.call_status)) excludedSlotIds.add(sid);
   }
 
   const roomsInfo = await hospitalDb('opd_qs_room as r')
@@ -151,11 +151,11 @@ export async function getMultiDisplayData(roomIds: number[]) {
   }));
 
   const locationId = roomsInfo[0]?.opd_qs_location_id || '';
-  const displaySettings = await getDisplaySettings(locationId);
+  const displaySettings = await getDisplaySettings(locationId, deviceType);
   return { status: 'success', rooms_data: roomsData, called_list, call_repeat_count: displaySettings.call_repeat_count, display_settings: displaySettings };
 }
 
-export async function getRoomListDisplayData(roomIds: number[], limit = 6) {
+export async function getRoomListDisplayData(roomIds: number[], limit = 6, deviceType?: string) {
   const safeLimit = Math.min(12, Math.max(1, Math.round(Number(limit) || 6)));
   if (!roomIds.length) return { status: 'success', rooms_data: [], limit: safeLimit };
 
@@ -216,7 +216,7 @@ export async function getRoomListDisplayData(roomIds: number[], limit = 6) {
   }).filter(Boolean);
 
   const locationId = roomsInfo[0]?.opd_qs_location_id || '';
-  return { status: 'success', rooms_data: roomsData, limit: safeLimit, location_id: locationId, display_settings: await getDisplaySettings(locationId) };
+  return { status: 'success', rooms_data: roomsData, limit: safeLimit, location_id: locationId, display_settings: await getDisplaySettings(locationId, deviceType) };
 }
 
 function withPatientName(row: any) {
@@ -234,7 +234,7 @@ function todayRange(): [Date, Date] {
   return [new Date(`${day}T00:00:00`), new Date(`${day}T23:59:59`)];
 }
 
-async function getDisplaySettings(locationId: string | number) {
+async function getDisplaySettings(locationId: string | number, deviceType?: string) {
   const defaults = { call_repeat_count: 1, queue_colors: {}, queue_font_weight: '900', display_font_family: 'kanit', destination_label: 'ห้องตรวจ' };
   if (!locationId) return defaults;
   const row = await cpaDb('service_location_config')
@@ -243,12 +243,18 @@ async function getDisplaySettings(locationId: string | number) {
     .first();
   const n = Math.round(Number(row?.call_repeat_count || 1));
   const settings = parseSettings(row?.settings_json);
+  // A device-type-specific override (set from the "Default Colors" tabs in service-settings)
+  // takes priority over the location's own colors; with no override, behavior is unchanged.
+  const override = deviceType && settings.type_overrides && typeof settings.type_overrides === 'object'
+    ? settings.type_overrides[deviceType]
+    : null;
+  const colorSource = override && typeof override === 'object' ? override : settings;
   return {
     ...defaults,
     call_repeat_count: Number.isFinite(n) ? Math.min(5, Math.max(1, n)) : 1,
-    queue_colors: settings.queue_colors && typeof settings.queue_colors === 'object' ? settings.queue_colors : {},
-    queue_font_weight: ['400', '700', '900'].includes(String(settings.queue_font_weight)) ? String(settings.queue_font_weight) : '900',
-    display_font_family: ['kanit', 'anuphan', 'ibm-plex-sans-thai', 'noto-sans-thai', 'prompt', 'sarabun'].includes(String(settings.display_font_family)) ? String(settings.display_font_family) : 'kanit',
+    queue_colors: colorSource.queue_colors && typeof colorSource.queue_colors === 'object' ? colorSource.queue_colors : {},
+    queue_font_weight: ['400', '700', '900'].includes(String(colorSource.queue_font_weight)) ? String(colorSource.queue_font_weight) : '900',
+    display_font_family: ['kanit', 'anuphan', 'ibm-plex-sans-thai', 'noto-sans-thai', 'prompt', 'sarabun'].includes(String(colorSource.display_font_family)) ? String(colorSource.display_font_family) : 'kanit',
     destination_label: destinationLabel(row, settings),
   };
 }

@@ -117,7 +117,7 @@ export async function getQueues(locationId: string, doctorCodes: string[] = []) 
   });
 }
 
-export async function logQueueCall(input: { slotId: string; roomId: string; status: 'N' | 'W' }) {
+export async function logQueueCall(input: { slotId: string; roomId: string; status: 'N' | 'W' | 'P' }) {
   const d = await hospitalDb('opd_qs_slot as a')
     .select('a.queue_slot_number', 'o.oqueue', 'o.hn', 'a.vn', 'p.fname', 'p.lname', { doctor_name: 'd.name' }, 'a.call_opd_qs_room_id', 'a.opd_qs_room_id', { slot_location_id: 'sr.opd_qs_location_id' })
     .leftJoin('opd_qs_room as sr', 'a.opd_qs_room_id', 'sr.opd_qs_room_id')

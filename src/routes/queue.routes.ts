@@ -150,9 +150,9 @@ queueRouter.delete('/display-devices/:deviceId', async (req, res, next) => {
 async function displayDataForDevice(device: any) {
   const roomIds = [...new Set<number>((device.room_ids || []).map(Number).filter(Boolean))];
   if (device.device_type === 'room-list') {
-    return getRoomListDisplayData(roomIds, Number(device.settings?.queue_limit || 6));
+    return getRoomListDisplayData(roomIds, Number(device.settings?.queue_limit || 6), device.device_type);
   }
-  return getMultiDisplayData(roomIds);
+  return getMultiDisplayData(roomIds, device.device_type);
 }
 queueRouter.post('/media', upload.single('media_file'), async (req, res, next) => {
   try {
@@ -210,6 +210,20 @@ queueRouter.post('/hold', async (req, res, next) => {
     const result = await Queue.logQueueCall({ slotId: slot, roomId, status: 'W' });
     logQueueAction({ action: 'hold', slotId: slot, detail: result.detail, room: result.room, user: req.session.user, ip: req.ip }).catch(err => console.warn('Queue hold log failed:', err));
     wsHub.broadcastQueueChanged({ action: 'hold', slotId: slot, roomId, locationId: result.room?.opd_qs_location_id });
+    res.json({ status: 'success' });
+  } catch (e) { next(e); }
+});
+queueRouter.post('/pharmacy', async (req, res, next) => {
+  try {
+    const slot = String(req.body.slot_id);
+    const rows = await Queue.getQueues(String(req.body.location_id ?? ''), []);
+    const found: any = rows.find((q: any) => String(q.opd_qs_slot_id) === slot);
+    const current = await Queue.getCurrentQueueCall(slot);
+    const roomId = String(current?.room_id ?? req.body.room_id ?? found?.opd_qs_room_id ?? '');
+    if (!roomId) return res.status(400).json({ status: 'error', message: 'ไม่พบห้องที่เรียกคิวนี้' });
+    const result = await Queue.logQueueCall({ slotId: slot, roomId, status: 'P' });
+    logQueueAction({ action: 'pharmacy', slotId: slot, detail: result.detail, room: result.room, user: req.session.user, ip: req.ip }).catch(err => console.warn('Queue pharmacy log failed:', err));
+    wsHub.broadcastQueueChanged({ action: 'pharmacy', slotId: slot, roomId, locationId: result.room?.opd_qs_location_id });
     res.json({ status: 'success' });
   } catch (e) { next(e); }
 });

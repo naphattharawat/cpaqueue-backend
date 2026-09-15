@@ -22,7 +22,7 @@ export async function logLogin(input: {
 }
 
 export async function logQueueAction(input: {
-  action: 'call' | 'hold' | 'cancel';
+  action: 'call' | 'hold' | 'cancel' | 'pharmacy';
   slotId: string;
   detail?: any;
   room?: any;
