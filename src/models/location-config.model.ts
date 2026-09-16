@@ -20,8 +20,8 @@ export const voiceTypes = [
   'table',
   'silent',
 ];
-const displayDeviceTypes = new Set(['single', 'dual', 'multi', 'multi2', 'room-list']);
-const overridableDeviceTypes = ['single', 'dual', 'multi', 'multi2', 'room-list'];
+const displayDeviceTypes = new Set(['single', 'dual', 'multi', 'multi2', 'room-list', 'room-grid']);
+const overridableDeviceTypes = ['single', 'dual', 'multi', 'multi2', 'room-list', 'room-grid'];
 const encryptedTokenSetting = '_display_token';
 
 export async function listLocationConfigs() {
@@ -223,7 +223,7 @@ function decryptToken(payload: string) {
   }
 }
 
-function normalizeDeviceType(value: any) {
+export function normalizeDeviceType(value: any) {
   const type = String(value || '').trim();
   return displayDeviceTypes.has(type) ? type : 'multi';
 }

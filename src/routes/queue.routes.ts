@@ -102,6 +102,18 @@ queueRouter.get('/display-devices/:deviceId/preview-data', async (req, res, next
     res.json(await displayDataForDevice(device));
   } catch (e) { next(e); }
 });
+queueRouter.get('/display-devices/preview-sandbox', async (req, res, next) => {
+  try {
+    const deviceType = LocationConfig.normalizeDeviceType(req.query.device_type);
+    const roomIds = String(req.query.room_ids || '').split(',').map(id => id.trim()).filter(Boolean);
+    if (!roomIds.length) return res.status(400).json({ status: 'error', message: 'กรุณาเลือกห้องอย่างน้อย 1 ห้อง' });
+    res.json(await displayDataForDevice({
+      device_type: deviceType,
+      room_ids: roomIds,
+      settings: { queue_limit: Number(req.query.queue_limit || 6) },
+    }));
+  } catch (e) { next(e); }
+});
 queueRouter.get('/audio-files', async (req, res, next) => {
   try { res.json(ok(await Audio.listAudioFiles(req.query.destination === '1'))); } catch (e) { next(e); }
 });
