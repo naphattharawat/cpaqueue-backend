@@ -179,13 +179,21 @@ export async function getRoomListDisplayData(roomIds: number[], limit = 6, devic
     .orderBy('r.opd_qs_room_name', 'asc');
   const roomMap = new Map(roomsInfo.map((r: any) => [String(r.opd_qs_room_id), r]));
 
-  const calls = await cpaDb('queue_call_logs')
-    .select('log_id', 'slot_id', 'room_id', 'queue_no', 'oqueue', 'logged_at', 'hn', 'patient_name', 'room_number', 'room_name')
-    .whereIn('room_id', roomIds.map(String))
-    .where('action', 'call')
+  const actionLogs = await cpaDb('queue_call_logs')
+    .select('log_id', 'slot_id', 'room_id', 'queue_no', 'oqueue', 'action', 'logged_at', 'hn', 'patient_name', 'room_number', 'room_name')
     .whereBetween('logged_at', todayRange())
     .orderBy('logged_at', 'desc')
     .orderBy('log_id', 'desc');
+
+  // Room-list represents the current called history, not every audit event. Keep only the
+  // newest action per slot so recalls do not duplicate and hold/cancel removes the slot.
+  const latestBySlot = new Map<string, any>();
+  for (const log of actionLogs) {
+    const slotId = String(log.slot_id);
+    if (!latestBySlot.has(slotId)) latestBySlot.set(slotId, log);
+  }
+  const allowedRooms = new Set(roomIds.map(String));
+  const calls = [...latestBySlot.values()].filter(log => log.action === 'call' && allowedRooms.has(String(log.room_id)));
 
   const callsByRoom = new Map<string, any[]>();
   for (const call of calls) {
