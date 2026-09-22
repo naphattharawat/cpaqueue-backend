@@ -9,6 +9,7 @@ const ROW_ID = 1;
 // actually edits the system defaults.
 const SEED = {
   queue_colors: {
+    theme: '#4899b2',
     active_text: '#7c2d12',
     active_border: '#f59e0b',
     active_text_stroke: '',

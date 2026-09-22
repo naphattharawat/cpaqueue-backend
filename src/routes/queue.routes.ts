@@ -11,6 +11,7 @@ import * as ColorDefaults from '../models/color-defaults.model.js';
 import { requireAdmin, requireAuth } from '../middleware/auth.middleware.js';
 import { rateLimit } from '../security.js';
 import { wsHub } from '../wsHub.js';
+import { generateGoogleAudio, googleGeneratedStatus } from './tts.routes.js';
 
 export const queueRouter = Router();
 const upload = multer({
@@ -82,6 +83,12 @@ queueRouter.get('/location-configs', async (_req, res, next) => {
   try { res.json(ok(await LocationConfig.listLocationConfigs())); } catch (e) { next(e); }
 });
 queueRouter.get('/location-configs/voice-types', (_req, res) => res.json(ok(LocationConfig.voiceTypes)));
+queueRouter.get('/location-configs/:locationId/google-audio', async (req, res, next) => {
+  try { res.json(ok(await googleGeneratedStatus(req.params.locationId))); } catch (e) { next(e); }
+});
+queueRouter.post('/location-configs/:locationId/google-audio/generate', async (req, res, next) => {
+  try { res.json(ok(await generateGoogleAudio(req.params.locationId, String(req.body.room_label || 'ห้องตรวจ')))); } catch (e) { next(e); }
+});
 queueRouter.get('/queue-color-defaults', async (_req, res, next) => {
   try { res.json(ok(await ColorDefaults.getQueueColorDefaults())); } catch (e) { next(e); }
 });
@@ -110,7 +117,10 @@ queueRouter.get('/display-devices/preview-sandbox', async (req, res, next) => {
     res.json(await displayDataForDevice({
       device_type: deviceType,
       room_ids: roomIds,
-      settings: { queue_limit: Number(req.query.queue_limit || 6) },
+      settings: {
+        queue_limit: Number(req.query.queue_limit || 6),
+        show_multiple_queues: req.query.show_multiple_queues === '1',
+      },
     }));
   } catch (e) { next(e); }
 });
@@ -163,6 +173,22 @@ async function displayDataForDevice(device: any) {
   const roomIds = [...new Set<number>((device.room_ids || []).map(Number).filter(Boolean))];
   if (device.device_type === 'room-list') {
     return getRoomListDisplayData(roomIds, Number(device.settings?.queue_limit || 6), device.device_type);
+  }
+  if (device.device_type === 'room-grid' && device.settings?.show_multiple_queues) {
+    const [gridData, listData] = await Promise.all([
+      getMultiDisplayData(roomIds, device.device_type),
+      getRoomListDisplayData(roomIds, Number(device.settings?.queue_limit || 6), device.device_type),
+    ]);
+    const listByRoom = new Map((listData.rooms_data || []).map((room: any) => [String(room.room_id), room]));
+    return {
+      ...gridData,
+      rooms_data: (gridData.rooms_data || []).map((room: any) => ({
+        ...room,
+        queues: (listByRoom.get(String(room.room_id)) as any)?.queues || [],
+        next_queue_slot: (listByRoom.get(String(room.room_id)) as any)?.next_queue_slot || 0,
+      })),
+      limit: listData.limit,
+    };
   }
   return getMultiDisplayData(roomIds, device.device_type);
 }
@@ -236,6 +262,22 @@ queueRouter.post('/pharmacy', async (req, res, next) => {
     const result = await Queue.logQueueCall({ slotId: slot, roomId, status: 'P' });
     logQueueAction({ action: 'pharmacy', slotId: slot, detail: result.detail, room: result.room, user: req.session.user, ip: req.ip }).catch(err => console.warn('Queue pharmacy log failed:', err));
     wsHub.broadcastQueueChanged({ action: 'pharmacy', slotId: slot, roomId, locationId: result.room?.opd_qs_location_id });
+    res.json({ status: 'success' });
+  } catch (e) { next(e); }
+});
+queueRouter.post('/resume', async (req, res, next) => {
+  try {
+    const slot = String(req.body.slot_id);
+    const current = await Queue.getCurrentQueueCall(slot);
+    if (!current || current.call_status !== 'P') {
+      return res.status(409).json({ status: 'error', message: 'คิวนี้ไม่ได้อยู่ในสถานะพักคิว' });
+    }
+    const resumed = await Queue.cancelQueue(slot);
+    const roomId = resumed?.room_id ?? req.body.room_id;
+    const locationId = resumed?.location_id ?? req.body.location_id;
+    logQueueAction({ action: 'resume', slotId: slot, room: { room_id: roomId }, user: req.session.user, ip: req.ip })
+      .catch(err => console.warn('Queue resume log failed:', err));
+    wsHub.broadcastQueueChanged({ action: 'resume', slotId: slot, roomId, locationId, queueNo: resumed?.queue_no });
     res.json({ status: 'success' });
   } catch (e) { next(e); }
 });

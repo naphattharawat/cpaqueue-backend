@@ -20,7 +20,7 @@ const uploadsPath = process.env.UPLOADS_DIR
   : path.resolve(__dirname, '../../uploads');
 const assetsPath = process.env.ASSETS_DIR
   ? path.resolve(process.env.ASSETS_DIR)
-  : path.resolve(__dirname, '../assets');
+  : path.resolve(process.cwd(), '../assets');
 const allowedOrigins = corsOrigins();
 const sessionSameSite = process.env.SESSION_SAME_SITE === 'none' ? 'none' : 'lax';
 if (process.env.TRUST_PROXY === 'true') app.set('trust proxy', 1);

@@ -52,6 +52,8 @@ export async function listLocationConfigs() {
       pooled_call_enabled: !!Number(config.pooled_call_enabled || 0),
       settings: parseSettings(config.settings_json),
       google_room_label: parseSettings(config.settings_json).google_room_label || 'ห้องตรวจ',
+      google_playback_mode: parseSettings(config.settings_json).google_playback_mode === 'generated' ? 'generated' : 'online',
+      google_generated_at: parseSettings(config.settings_json).google_generated_at || '',
       recorded_room_label: parseSettings(config.settings_json).recorded_room_label || '',
       recorded_number_mode: normalizeRecordedNumberMode(parseSettings(config.settings_json).recorded_number_mode),
       queue_colors: normalizeQueueColors(parseSettings(config.settings_json).queue_colors),
@@ -78,6 +80,8 @@ export async function updateLocationConfig(locationId: string, body: any) {
     settings_json: JSON.stringify({
       ...(body.settings || {}),
       google_room_label: body.google_room_label || body.settings?.google_room_label || '',
+      google_playback_mode: body.google_playback_mode === 'generated' ? 'generated' : 'online',
+      google_generated_at: body.google_generated_at || body.settings?.google_generated_at || '',
       recorded_room_label: body.recorded_room_label || body.settings?.recorded_room_label || '',
       recorded_number_mode: normalizeRecordedNumberMode(body.recorded_number_mode || body.settings?.recorded_number_mode),
       queue_colors: normalizeQueueColors(body.queue_colors || body.settings?.queue_colors),
@@ -271,6 +275,7 @@ function normalizeRecordedNumberMode(value: any) {
 export function normalizeQueueColors(value: any) {
   const colors = value && typeof value === 'object' ? value : {};
   return {
+    theme: normalizeColor(colors.theme, '#4899b2'),
     active_text: normalizeColor(colors.active_text, '#7c2d12'),
     active_border: normalizeColor(colors.active_border, '#f59e0b'),
     active_text_stroke: normalizeBackgroundColor(colors.active_text_stroke),

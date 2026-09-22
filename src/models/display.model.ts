@@ -195,12 +195,13 @@ export async function getRoomListDisplayData(roomIds: number[], limit = 6, devic
   const allowedRooms = new Set(roomIds.map(String));
   const calls = [...latestBySlot.values()].filter(log => log.action === 'call' && allowedRooms.has(String(log.room_id)));
 
-  const callsByRoom = new Map<string, any[]>();
-  for (const call of calls) {
+  const callsByRoom = new Map<string, { slots: any[]; count: number }>();
+  for (const call of [...calls].reverse()) {
     const key = String(call.room_id);
-    const list = callsByRoom.get(key) || [];
-    if (list.length < safeLimit) list.push(call);
-    callsByRoom.set(key, list);
+    const state = callsByRoom.get(key) || { slots: [], count: 0 };
+    state.slots[state.count % safeLimit] = call;
+    state.count += 1;
+    callsByRoom.set(key, state);
   }
 
   const detailMap = new Map<string, any>();
@@ -212,7 +213,8 @@ export async function getRoomListDisplayData(roomIds: number[], limit = 6, devic
   const roomsData = roomIds.map(roomId => {
     const room = roomMap.get(String(roomId));
     if (!room) return null;
-    const queues = (callsByRoom.get(String(roomId)) || []).map(call => {
+    const roomCalls = callsByRoom.get(String(roomId)) || { slots: [], count: 0 };
+    const queues = roomCalls.slots.map(call => {
       const detail = detailMap.get(String(call.slot_id));
       return {
         ...detail,
@@ -232,6 +234,7 @@ export async function getRoomListDisplayData(roomIds: number[], limit = 6, devic
       location_id: room.opd_qs_location_id,
       location_name: room.location_name,
       queues,
+      next_queue_slot: roomCalls.count % safeLimit,
     };
   }).filter(Boolean);
 
