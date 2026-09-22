@@ -109,7 +109,7 @@ ttsRouter.get('/', async (req, res, next) => {
 
 function buildCallText(queue: string, roomType: string, room: string, roomLabelOverride = '', numberMode: 'digits' | 'number' = 'digits', repeatCount = 1) {
   const qSpelled = ttsNumberText(queue, numberMode);
-  const repeatedQueue = Array(repeatCount).fill(qSpelled).join(' ');
+  const repeatedQueue = Array(repeatCount).fill(qSpelled).join(', ');
   const roomSpelled = ttsNumberText(room, numberMode);
   const roomLabel = roomLabelOverride || roomTypeText[roomType] || roomTypeText.doctor_room;
   return `${roomTypeText.please} ${repeatedQueue} ${roomLabel}${roomSpelled ? ` ${roomSpelled}` : ''} ค่ะ`;
@@ -124,7 +124,7 @@ function ttsNumberText(value: string, mode: 'digits' | 'number') {
 function buildRecordedFiles(queue: string, roomType: string, room: string, numberMode: 'digits' | 'number', repeatCount = 1) {
   const suffix = recordedSuffixToken();
   const queueTokens = splitAudioTokens(queue, numberMode);
-  const tokens = ['please', ...Array.from({ length: repeatCount }, () => queueTokens).flat(), roomType, ...splitAudioTokens(room, numberMode), suffix === 'silent' ? '' : suffix];
+  const tokens = ['please', ...repeatAudioTokens(queueTokens, repeatCount), roomType, ...splitAudioTokens(room, numberMode), suffix === 'silent' ? '' : suffix];
   return tokens.filter(Boolean).map(token => audioUrl(token));
 }
 
@@ -132,6 +132,15 @@ function splitAudioTokens(value: string, mode: 'digits' | 'number') {
   const compact = value.replace(/\s+/g, '');
   if (mode === 'digits') return compact.split('').filter(Boolean).map(token => token.toLowerCase());
   return (compact.match(/\d+|[^\d]/g) || []).flatMap(token => /^\d+$/.test(token) ? thaiNumberTokens(token) : [token.toLowerCase()]);
+}
+
+function repeatAudioTokens(tokens: string[], repeatCount: number) {
+  const repeated: string[] = [];
+  for (let index = 0; index < repeatCount; index += 1) {
+    repeated.push(...tokens);
+    if (index < repeatCount - 1) repeated.push('silent');
+  }
+  return repeated;
 }
 
 function thaiNumberTokens(value: string) {
@@ -173,8 +182,8 @@ function generatedUrl(locationId: string, token: string) {
 
 function buildGeneratedFiles(locationId: string, queue: string, room: string, numberMode: 'digits' | 'number', repeatCount = 1) {
   const queueTokens = splitAudioTokens(queue, numberMode);
-  const tokens = ['please', ...Array.from({ length: repeatCount }, () => queueTokens).flat(), 'destination', ...splitAudioTokens(room, numberMode), 'ka'];
-  return tokens.filter(Boolean).map(token => generatedUrl(locationId, token));
+  const tokens = ['please', ...repeatAudioTokens(queueTokens, repeatCount), 'destination', ...splitAudioTokens(room, numberMode), 'ka'];
+  return tokens.filter(Boolean).map(token => token === 'silent' ? audioUrl(token) : generatedUrl(locationId, token));
 }
 
 async function filesExist(urls: string[]) {
