@@ -146,9 +146,11 @@ export async function logQueueCall(input: { slotId: string; roomId: string; stat
     error.status = 400;
     throw error;
   }
+  const callDatetime = new Date();
+  let callId = '';
   await cpaDb.transaction(async (trx) => {
     await trx('opd_qs_call').where({ slot_id: String(input.slotId) }).delete();
-    await trx('opd_qs_call').insert({
+    const inserted = await trx('opd_qs_call').insert({
       slot_id: String(input.slotId),
       hn: d.hn,
       vn: d.vn,
@@ -158,10 +160,11 @@ export async function logQueueCall(input: { slotId: string; roomId: string; stat
       room_id: input.roomId,
       room_name: r.opd_qs_room_name,
       call_status: input.status,
-      call_datetime: new Date(),
+      call_datetime: callDatetime,
     });
+    callId = String(Array.isArray(inserted) ? inserted[0] : inserted || '');
   });
-  return { detail: { ...d, patient_name: patientName(d) }, room: r };
+  return { detail: { ...d, patient_name: patientName(d) }, room: r, callId, callDatetime };
 }
 
 export async function cancelQueue(slotId: string) {

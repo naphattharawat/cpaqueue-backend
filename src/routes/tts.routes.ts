@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { cpaDb } from '../db.js';
@@ -14,6 +15,25 @@ const defaultRoomType = () => process.env.TTS_ROOM_TYPE_DEFAULT || 'doctor_room'
 const recordedSuffixToken = () => process.env.RECORDED_AUDIO_SUFFIX_TOKEN || 'ka';
 const assetsDir = process.env.ASSETS_DIR ? path.resolve(process.env.ASSETS_DIR) : path.resolve(process.cwd(), '../assets');
 const generatedRoot = path.join(assetsDir, 'audio', 'generated', 'google');
+const numberSequenceJobs = new Map<string, Promise<string>>();
+const numberPrewarmJobs = new Map<string, NumberPrewarmState>();
+const DIGIT_PREWARM_TOTAL = 9999;
+type NumberMode = 'digits' | 'number';
+type NumberPrewarmState = {
+  scope: 'global';
+  mode: NumberMode;
+  running: boolean;
+  stopRequested: boolean;
+  total: number;
+  completed: number;
+  generated: number;
+  skipped: number;
+  failed: number;
+  current: number;
+  started_at: string;
+  finished_at: string;
+  last_error: string;
+};
 const generatedTokenText: Record<string, string> = {
   please: 'เชิญหมายเลข', ka: 'ค่ะ',
   '0': 'ศูนย์', '1': 'หนึ่ง', '2': 'สอง', '3': 'สาม', '4': 'สี่',
@@ -81,9 +101,13 @@ ttsRouter.get('/call', async (req, res, next) => {
     }
 
     if (googlePlaybackMode === 'generated' && locationId) {
-      const files = buildGeneratedFiles(locationId, queue, room, numberMode, repeatCount);
-      if (await filesExist(files)) {
-        return res.json({ provider: 'google-generated', text, voice_rate: voiceRate, number_mode: numberMode, files });
+      try {
+        const files = await buildGeneratedFiles(locationId, queue, room, numberMode, repeatCount);
+        if (await filesExist(files)) {
+          return res.json({ provider: 'google-generated', text, voice_rate: voiceRate, number_mode: numberMode, files });
+        }
+      } catch (error) {
+        console.warn(`Unable to cache number-sequence audio for location ${locationId}:`, error);
       }
     }
     try {
@@ -180,10 +204,153 @@ function generatedUrl(locationId: string, token: string) {
   return `/assets/audio/generated/google/${generatedLocationKey(locationId)}/${encodeURIComponent(token)}.mp3`;
 }
 
-function buildGeneratedFiles(locationId: string, queue: string, room: string, numberMode: 'digits' | 'number', repeatCount = 1) {
-  const queueTokens = splitAudioTokens(queue, numberMode);
-  const tokens = ['please', ...repeatAudioTokens(queueTokens, repeatCount), 'destination', ...splitAudioTokens(room, numberMode), 'ka'];
-  return tokens.filter(Boolean).map(token => token === 'silent' ? audioUrl(token) : generatedUrl(locationId, token));
+async function buildGeneratedFiles(locationId: string, queue: string, room: string, numberMode: 'digits' | 'number', repeatCount = 1) {
+  const queueFiles = [await ensureGeneratedNumberSequence(queue, numberMode)];
+  const repeatedQueueFiles: string[] = [];
+  for (let index = 0; index < repeatCount; index += 1) {
+    repeatedQueueFiles.push(...queueFiles);
+    if (index < repeatCount - 1) repeatedQueueFiles.push(audioUrl('silent'));
+  }
+  return [
+    generatedUrl(locationId, 'please'),
+    ...repeatedQueueFiles,
+    generatedUrl(locationId, 'destination'),
+    ...splitAudioTokens(room, numberMode).map(token => generatedUrl(locationId, token)),
+    generatedUrl(locationId, 'ka'),
+  ];
+}
+
+async function ensureGeneratedNumberSequence(queue: string, mode: NumberMode) {
+  const compact = String(queue || '').replace(/\s+/g, '');
+  const fileName = /^\d{1,4}$/.test(compact)
+    ? `n-${compact}.mp3`
+    : `q-${crypto.createHash('sha256').update(compact).digest('hex')}.mp3`;
+  const folder = numberModeFolder(mode);
+  const relativeUrl = `/assets/audio/generated/google/shared/${folder}/${fileName}`;
+  const target = path.join(generatedRoot, 'shared', folder, fileName);
+  if (await fs.stat(target).then(stat => stat.isFile()).catch(() => false)) return relativeUrl;
+
+  const jobKey = `${mode}:${fileName}`;
+  let job = numberSequenceJobs.get(jobKey);
+  if (!job) {
+    job = (async () => {
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      const temp = `${target}.tmp-${process.pid}-${Date.now()}`;
+      try {
+        await fs.writeFile(temp, await fetchGoogleTts(ttsNumberText(compact, mode)));
+        await fs.rename(temp, target);
+      } finally {
+        await fs.rm(temp, { force: true }).catch(() => undefined);
+      }
+      return relativeUrl;
+    })().finally(() => numberSequenceJobs.delete(jobKey));
+    numberSequenceJobs.set(jobKey, job);
+  }
+  return job;
+}
+
+export async function googleDigitPrewarmStatus(_locationId: string, mode: NumberMode = 'digits') {
+  const jobKey = prewarmJobKey(mode);
+  const active = numberPrewarmJobs.get(jobKey);
+  if (active) return { ...active };
+  const completed = await countGeneratedNumberSequences(mode);
+  return {
+    scope: 'global',
+    mode,
+    running: false,
+    stopRequested: false,
+    total: DIGIT_PREWARM_TOTAL,
+    completed,
+    generated: 0,
+    skipped: completed,
+    failed: 0,
+    current: 0,
+    started_at: '',
+    finished_at: '',
+    last_error: '',
+  };
+}
+
+export async function startGoogleDigitPrewarm(_locationId: string, mode: NumberMode = 'digits') {
+  const jobKey = prewarmJobKey(mode);
+  const existing = numberPrewarmJobs.get(jobKey);
+  if (existing?.running) return { ...existing };
+  const completed = await countGeneratedNumberSequences(mode);
+  const state: NumberPrewarmState = {
+    scope: 'global',
+    mode,
+    running: true,
+    stopRequested: false,
+    total: DIGIT_PREWARM_TOTAL,
+    completed,
+    generated: 0,
+    skipped: completed,
+    failed: 0,
+    current: 0,
+    started_at: new Date().toISOString(),
+    finished_at: '',
+    last_error: '',
+  };
+  numberPrewarmJobs.set(jobKey, state);
+  void runDigitPrewarm(state);
+  return { ...state };
+}
+
+export async function stopGoogleDigitPrewarm(locationId: string, mode: NumberMode = 'digits') {
+  const state = numberPrewarmJobs.get(prewarmJobKey(mode));
+  if (state) state.stopRequested = true;
+  return googleDigitPrewarmStatus(locationId, mode);
+}
+
+async function runDigitPrewarm(state: NumberPrewarmState) {
+  let consecutiveFailures = 0;
+  try {
+    for (let number = 1; number <= DIGIT_PREWARM_TOTAL; number += 1) {
+      if (state.stopRequested) break;
+      state.current = number;
+      const target = numberSequencePath(String(number), state.mode);
+      if (await fs.stat(target).then(stat => stat.isFile()).catch(() => false)) continue;
+      try {
+        await ensureGeneratedNumberSequence(String(number), state.mode);
+        state.generated += 1;
+        state.completed += 1;
+        consecutiveFailures = 0;
+        await delay(150);
+      } catch (error) {
+        state.failed += 1;
+        consecutiveFailures += 1;
+        state.last_error = error instanceof Error ? error.message : String(error);
+        if (consecutiveFailures >= 10) break;
+        await delay(5000);
+      }
+    }
+  } finally {
+    state.running = false;
+    state.finished_at = new Date().toISOString();
+    state.current = 0;
+  }
+}
+
+function numberModeFolder(mode: NumberMode) {
+  return mode === 'number' ? 'numbers' : 'digits';
+}
+
+function prewarmJobKey(mode: NumberMode) {
+  return mode;
+}
+
+function numberSequencePath(queue: string, mode: NumberMode) {
+  return path.join(generatedRoot, 'shared', numberModeFolder(mode), `n-${queue}.mp3`);
+}
+
+async function countGeneratedNumberSequences(mode: NumberMode) {
+  const dir = path.join(generatedRoot, 'shared', numberModeFolder(mode));
+  const files = await fs.readdir(dir).catch((): string[] => []);
+  return files.filter(file => /^n-(?:[1-9]\d{0,3})\.mp3$/.test(file) && Number(file.slice(2, -4)) <= DIGIT_PREWARM_TOTAL).length;
+}
+
+function delay(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 async function filesExist(urls: string[]) {

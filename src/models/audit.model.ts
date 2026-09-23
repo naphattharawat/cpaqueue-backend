@@ -29,7 +29,7 @@ export async function logQueueAction(input: {
   user?: any;
   ip?: string;
 }) {
-  await cpaDb('queue_call_logs').insert({
+  const inserted = await cpaDb('queue_call_logs').insert({
     action: input.action,
     slot_id: String(input.slotId),
     hn: input.detail?.hn || null,
@@ -48,6 +48,7 @@ export async function logQueueAction(input: {
     ip_address: normalizeIp(input.ip || ''),
     logged_at: new Date(),
   });
+  return String(Array.isArray(inserted) ? inserted[0] : inserted || '');
 }
 
 export async function dashboardSummary() {

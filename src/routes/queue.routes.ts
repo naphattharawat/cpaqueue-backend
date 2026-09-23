@@ -11,7 +11,7 @@ import * as ColorDefaults from '../models/color-defaults.model.js';
 import { requireAdmin, requireAuth } from '../middleware/auth.middleware.js';
 import { rateLimit } from '../security.js';
 import { wsHub } from '../wsHub.js';
-import { generateGoogleAudio, googleGeneratedStatus } from './tts.routes.js';
+import { generateGoogleAudio, googleDigitPrewarmStatus, googleGeneratedStatus, startGoogleDigitPrewarm, stopGoogleDigitPrewarm } from './tts.routes.js';
 
 export const queueRouter = Router();
 const upload = multer({
@@ -88,6 +88,15 @@ queueRouter.get('/location-configs/:locationId/google-audio', async (req, res, n
 });
 queueRouter.post('/location-configs/:locationId/google-audio/generate', async (req, res, next) => {
   try { res.json(ok(await generateGoogleAudio(req.params.locationId, String(req.body.room_label || 'ห้องตรวจ')))); } catch (e) { next(e); }
+});
+queueRouter.get('/location-configs/:locationId/google-audio/digits', async (req, res, next) => {
+  try { res.json(ok(await googleDigitPrewarmStatus(req.params.locationId, req.query.mode === 'number' ? 'number' : 'digits'))); } catch (e) { next(e); }
+});
+queueRouter.post('/location-configs/:locationId/google-audio/digits/start', async (req, res, next) => {
+  try { res.json(ok(await startGoogleDigitPrewarm(req.params.locationId, req.body.mode === 'number' ? 'number' : 'digits'))); } catch (e) { next(e); }
+});
+queueRouter.post('/location-configs/:locationId/google-audio/digits/stop', async (req, res, next) => {
+  try { res.json(ok(await stopGoogleDigitPrewarm(req.params.locationId, req.body.mode === 'number' ? 'number' : 'digits'))); } catch (e) { next(e); }
 });
 queueRouter.get('/queue-color-defaults', async (_req, res, next) => {
   try { res.json(ok(await ColorDefaults.getQueueColorDefaults())); } catch (e) { next(e); }
@@ -224,9 +233,17 @@ queueRouter.delete('/media/:file', async (req, res, next) => { try { res.json({ 
 queueRouter.post('/call', async (req, res, next) => {
   try {
     const result = await Queue.logQueueCall({ slotId: String(req.body.slot_id), roomId: String(req.body.room_id), status: 'N' });
-    logQueueAction({ action: 'call', slotId: String(req.body.slot_id), detail: result.detail, room: result.room, user: req.session.user, ip: req.ip }).catch(err => console.warn('Queue call log failed:', err));
+    let auditCallId = '';
+    try {
+      auditCallId = await logQueueAction({ action: 'call', slotId: String(req.body.slot_id), detail: result.detail, room: result.room, user: req.session.user, ip: req.ip });
+    } catch (err) {
+      console.warn('Queue call log failed:', err);
+    }
     wsHub.broadcastQueueChanged({
       action: 'call',
+      callId: auditCallId || result.callId,
+      activeCallId: result.callId,
+      callDatetime: result.callDatetime.toISOString(),
       slotId: req.body.slot_id,
       roomId: req.body.room_id,
       locationId: result.room?.opd_qs_location_id,
