@@ -81,6 +81,7 @@ async function buildQueueResult(target: any) {
   let roomName = target.opd_qs_room_name || 'ห้องตรวจ';
   let roomNumber = target.opd_qs_room_number || '';
   let locationName = target.opd_qs_location_name || 'จุดบริการ';
+  let locationId = target.opd_qs_location_id;
 
   const callLog = await latestCallLog(target);
   if (callLog) {
@@ -89,6 +90,7 @@ async function buildQueueResult(target: any) {
     roomName = callLog.room_name || calledRoom?.opd_qs_room_name || roomName;
     roomNumber = calledRoom?.opd_qs_room_number || roomNumber;
     locationName = calledRoom?.opd_qs_location_name || locationName;
+    locationId = calledRoom?.opd_qs_location_id || locationId;
 
     if (callStatus === 'N' && String(callLog.slot_id) === String(target.opd_qs_slot_id)) {
       const latest = await cpaDb('opd_qs_call')
@@ -113,6 +115,7 @@ async function buildQueueResult(target: any) {
     location_name: locationName,
     room_name: roomName,
     room_number: roomNumber,
+    destination_label: await destinationLabel(locationId),
     call_status: callStatus,
     remaining,
   };
@@ -135,10 +138,35 @@ function latestCallLog(target: any) {
 function roomInfo(roomId: string | number | null | undefined) {
   if (!roomId) return null;
   return hospitalDb('opd_qs_room as r')
-    .select('r.opd_qs_room_name', 'r.opd_qs_room_number', 'l.opd_qs_location_name')
+    .select('r.opd_qs_room_name', 'r.opd_qs_room_number', 'r.opd_qs_location_id', 'l.opd_qs_location_name')
     .leftJoin('opd_qs_location as l', 'r.opd_qs_location_id', 'l.opd_qs_location_id')
     .where('r.opd_qs_room_id', roomId)
     .first();
+}
+
+async function destinationLabel(locationId: string | number | null | undefined) {
+  if (!locationId) return 'ห้องตรวจ';
+  const row = await cpaDb('service_location_config')
+    .select('tts_provider', 'recorded_room_type', 'settings_json')
+    .where({ location_id: String(locationId) })
+    .first();
+  const settings = parseSettings(row?.settings_json);
+  if (row?.tts_provider !== 'recorded') return String(settings.google_room_label || 'ห้องตรวจ').trim() || 'ห้องตรวจ';
+  if (settings.recorded_room_label) return String(settings.recorded_room_label).trim();
+  const labels: Record<string, string> = {
+    cashier: 'ห้องการเงิน', channel: 'ช่องบริการ', couter: 'เคาน์เตอร์', counter: 'เคาน์เตอร์',
+    doctor_room: 'ห้องตรวจ', 'interview-point': 'จุดซักประวัติ', 'interview-table': 'โต๊ะซักประวัติ',
+    number: 'หมายเลข', 'pay-cashier': 'ช่องจ่ายเงิน', 'pay-drug': 'ช่องจ่ายยา',
+    'receive-drug': 'ช่องรับยา', 'screen-point': 'จุดคัดกรอง', 'screen-table': 'โต๊ะคัดกรอง', table: 'โต๊ะ',
+  };
+  const key = String(row?.recorded_room_type || 'doctor_room');
+  return labels[key] || key.replace(/[-_]+/g, ' ');
+}
+
+function parseSettings(value: any) {
+  if (!value) return {};
+  if (typeof value === 'object') return value;
+  try { return JSON.parse(value); } catch { return {}; }
 }
 
 async function remainingQueues(target: any) {
