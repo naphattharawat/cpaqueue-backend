@@ -64,6 +64,8 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction) 
   ensureCsrfToken(req, res);
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
   if (req.path === '/login' && req.baseUrl === '/auth') return next();
+  if (req.path === '/display-devices/runtime/status' && req.baseUrl === '/api') return next();
+  if (req.path === '/display-devices/setup-code/claim' && req.baseUrl === '/api') return next();
   const header = String(req.get('x-csrf-token') || '');
   if (!header || header !== req.session.csrfToken) {
     return res.status(403).json({ status: 'error', message: 'Invalid CSRF token' });

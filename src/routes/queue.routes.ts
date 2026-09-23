@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
+import path from 'path';
 import { dashboardSummary, logQueueAction } from '../models/audit.model.js';
 import * as Queue from '../models/queue.model.js';
 import { getDisplayData, getMultiDisplayData, getRoomListDisplayData } from '../models/display.model.js';
@@ -8,6 +9,7 @@ import * as Media from '../models/media.model.js';
 import * as Audio from '../models/audio.model.js';
 import * as LocationConfig from '../models/location-config.model.js';
 import * as ColorDefaults from '../models/color-defaults.model.js';
+import * as DisplayUpdate from '../models/display-update.model.js';
 import { requireAdmin, requireAuth } from '../middleware/auth.middleware.js';
 import { rateLimit } from '../security.js';
 import { wsHub } from '../wsHub.js';
@@ -24,6 +26,11 @@ const audioUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => cb(null, ['audio/mpeg', 'audio/wav', 'audio/wave', 'audio/x-wav', 'audio/ogg'].includes(file.mimetype)),
 });
+const updateUpload = multer({
+  dest: DisplayUpdate.getDisplayUpdateDir(),
+  limits: { fileSize: 300 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => cb(null, path.extname(file.originalname).toLowerCase() === '.exe'),
+});
 
 const ok = (data: unknown) => ({ status: 'success', data });
 
@@ -35,6 +42,30 @@ queueRouter.get('/display-devices/resolve', rateLimit({ keyPrefix: 'display-devi
     const device = await LocationConfig.resolveDisplayDevice(String(req.query.token || ''), req.ip);
     if (!device) return res.status(404).json({ ok: false, error: 'Display device not found' });
     res.json(ok(device));
+  } catch (e) { next(e); }
+});
+queueRouter.get('/display-devices/runtime', rateLimit({ keyPrefix: 'display-device-runtime', windowMs: 60_000, max: 120 }), async (req, res, next) => {
+  try {
+    const runtime = await LocationConfig.getDisplayRuntime(String(req.query.token || ''), req.ip);
+    if (!runtime) return res.status(404).json({ ok: false, error: 'Display device not found' });
+    res.json(ok(runtime));
+  } catch (e) { next(e); }
+});
+queueRouter.post('/display-devices/runtime/status', rateLimit({ keyPrefix: 'display-device-runtime-status', windowMs: 60_000, max: 120 }), async (req, res, next) => {
+  try {
+    const token = String(req.body?.token || req.query.token || '');
+    const status = await LocationConfig.updateDisplayRuntimeStatus(token, req.body || {}, req.ip);
+    if (!status) return res.status(404).json({ ok: false, error: 'Display device not found' });
+    res.json(ok(status));
+  } catch (e) { next(e); }
+});
+queueRouter.post('/display-devices/setup-code/claim', rateLimit({ keyPrefix: 'display-device-setup-claim', windowMs: 10 * 60_000, max: 12 }), async (req, res, next) => {
+  try {
+    const code = String(req.body?.code || '').trim();
+    if (!/^\d{4}$/.test(code)) return res.status(400).json({ status: 'error', message: 'รหัสติดตั้งไม่ถูกต้อง' });
+    const result = await LocationConfig.claimDisplaySetupCode(code);
+    if (!result?.token) return res.status(404).json({ status: 'error', message: 'รหัสหมดอายุหรือถูกใช้ไปแล้ว' });
+    res.json(ok(result));
   } catch (e) { next(e); }
 });
 queueRouter.get('/display-devices/display', rateLimit({ keyPrefix: 'display-device-display', windowMs: 60_000, max: 180 }), async (req, res, next) => {
@@ -53,7 +84,7 @@ queueRouter.get('/media', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-queueRouter.use(['/media', '/media/*', '/location-configs', '/location-configs/*', '/audio-files', '/audio-files/*', '/display-devices/*', '/queue-color-defaults'], requireAdmin);
+queueRouter.use(['/media', '/media/*', '/location-configs', '/location-configs/*', '/audio-files', '/audio-files/*', '/display-devices/*', '/display-updates', '/queue-color-defaults'], requireAdmin);
 queueRouter.use(requireAuth);
 
 queueRouter.get('/locations', async (_req, res, next) => { try { res.json(ok(await Queue.getLocations())); } catch (e) { next(e); } });
@@ -136,6 +167,31 @@ queueRouter.get('/display-devices/preview-sandbox', async (req, res, next) => {
 queueRouter.get('/audio-files', async (req, res, next) => {
   try { res.json(ok(await Audio.listAudioFiles(req.query.destination === '1'))); } catch (e) { next(e); }
 });
+queueRouter.get('/display-updates', async (req, res, next) => {
+  try {
+    const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+    const protocol = forwardedProto || req.protocol;
+    const baseUrl = `${protocol}://${req.get('host')}/uploads/display-updates`;
+    const installers = await DisplayUpdate.listDisplayInstallers();
+    res.json(ok(installers.map(item => ({
+      ...item,
+      download_url: `${baseUrl}/${encodeURIComponent(item.filename)}`,
+    }))));
+  } catch (e) { next(e); }
+});
+queueRouter.post('/display-updates', updateUpload.single('installer'), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ status: 'error', message: 'กรุณาเลือกไฟล์ installer .exe' });
+    const saved = await DisplayUpdate.saveDisplayInstaller(req.file.path, String(req.body.version || ''));
+    const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+    const protocol = forwardedProto || req.protocol;
+    const downloadUrl = `${protocol}://${req.get('host')}/uploads/display-updates/${encodeURIComponent(saved.filename)}`;
+    res.json(ok({ ...saved, download_url: downloadUrl }));
+  } catch (e) {
+    if (req.file?.path) await import('fs/promises').then(fs => fs.rm(req.file!.path, { force: true })).catch(() => undefined);
+    next(e);
+  }
+});
 queueRouter.post('/audio-files', audioUpload.single('audio_file'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ status: 'error', message: 'Missing audio_file' });
@@ -170,6 +226,13 @@ queueRouter.post('/location-configs/:locationId/devices', async (req, res, next)
 });
 queueRouter.put('/display-devices/:deviceId', async (req, res, next) => {
   try { res.json(ok(await LocationConfig.updateDisplayDevice(req.params.deviceId, req.body))); } catch (e) { next(e); }
+});
+queueRouter.post('/display-devices/:deviceId/setup-code', async (req, res, next) => {
+  try {
+    const result = await LocationConfig.createDisplaySetupCode(req.params.deviceId);
+    if (!result) return res.status(404).json({ status: 'error', message: 'Display device not found' });
+    res.json(ok(result));
+  } catch (e) { next(e); }
 });
 queueRouter.post('/display-devices/:deviceId/rotate-token', async (req, res, next) => {
   try { res.json(ok(await LocationConfig.rotateDisplayDeviceToken(req.params.deviceId))); } catch (e) { next(e); }

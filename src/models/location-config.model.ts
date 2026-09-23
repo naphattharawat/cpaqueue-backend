@@ -23,6 +23,9 @@ export const voiceTypes = [
 const displayDeviceTypes = new Set(['single', 'dual', 'multi', 'multi2', 'room-list', 'room-grid']);
 const overridableDeviceTypes = ['single', 'dual', 'multi', 'multi2', 'room-list', 'room-grid'];
 const encryptedTokenSetting = '_display_token';
+const runtimeStatusSetting = '_runtime_status';
+const setupCodeHashSetting = '_setup_code_hash';
+const setupCodeExpiresSetting = '_setup_code_expires_at';
 
 export async function listLocationConfigs() {
   const locations = await hospitalDb('opd_qs_location')
@@ -32,11 +35,26 @@ export async function listLocationConfigs() {
   const devices = await cpaDb('display_devices')
     .select('device_id', 'device_name', 'device_type', 'location_id', 'room_ids', 'allowed_ips', 'active', 'settings_json', 'last_seen_at', 'last_seen_ip', 'created_at', 'updated_at')
     .orderBy('device_id', 'desc');
+  const deviceRoomIds = [...new Set(devices.flatMap((device: any) => splitCsv(device.room_ids || '')))].filter(Boolean);
+  const latestCalls = deviceRoomIds.length
+    ? await cpaDb('opd_qs_call')
+      .select('room_id')
+      .max('call_datetime as last_call_at')
+      .whereIn('room_id', deviceRoomIds)
+      .whereBetween('call_datetime', todayRange())
+      .groupBy('room_id')
+    : [];
+  const latestCallByRoom = new Map(latestCalls.map((row: any) => [String(row.room_id), row.last_call_at]));
   const configByLocation = new Map(configs.map(row => [String(row.location_id), row]));
   const devicesByLocation = new Map<string, any[]>();
   for (const device of devices) {
     const key = String(device.location_id);
-    devicesByLocation.set(key, [...(devicesByLocation.get(key) || []), normalizeDevice(device, true)]);
+      const normalized = normalizeDevice(device, true);
+      normalized.last_call_at = splitCsv(device.room_ids || '')
+        .map(roomId => latestCallByRoom.get(String(roomId)))
+        .filter(Boolean)
+        .sort((a: any, b: any) => new Date(b).getTime() - new Date(a).getTime())[0] || null;
+      devicesByLocation.set(key, [...(devicesByLocation.get(key) || []), normalized]);
   }
   return locations.map((location: any) => {
     const id = String(location.opd_qs_location_id);
@@ -117,7 +135,7 @@ export async function createDisplayDevice(locationId: string, body: any) {
     token_hash: tokenHash,
     allowed_ips: Array.isArray(body.allowed_ips) ? body.allowed_ips.join(',') : String(body.allowed_ips || ''),
     active: body.active === false ? 0 : 1,
-    settings_json: JSON.stringify({ ...(body.settings || {}), [encryptedTokenSetting]: encryptToken(token) }),
+    settings_json: JSON.stringify({ ...(body.settings || {}), remote_settings: normalizeRemoteSettings(body.settings?.remote_settings), [encryptedTokenSetting]: encryptToken(token) }),
   });
   return { ...(await getDevice(deviceId, true)), setup_token: token };
 }
@@ -134,6 +152,7 @@ export async function updateDisplayDevice(deviceId: string, body: any) {
     active: body.active === false ? 0 : 1,
     settings_json: JSON.stringify({
       ...(body.settings || {}),
+      remote_settings: normalizeRemoteSettings(body.settings?.remote_settings),
       ...(currentSettings[encryptedTokenSetting] ? { [encryptedTokenSetting]: currentSettings[encryptedTokenSetting] } : {}),
     }),
   });
@@ -157,6 +176,32 @@ export async function deleteDisplayDevice(deviceId: string) {
   return { deleted: true };
 }
 
+export async function createDisplaySetupCode(deviceId: string | number) {
+  const row = await cpaDb('display_devices').select('device_id', 'settings_json').where({ device_id: deviceId }).first();
+  if (!row) return null;
+  const code = String(crypto.randomInt(1000, 10000));
+  const settings = parseSettings(row.settings_json);
+  settings[setupCodeHashSetting] = hashToken(code);
+  settings[setupCodeExpiresSetting] = Date.now() + 10 * 60 * 1000;
+  await cpaDb('display_devices').where({ device_id: deviceId }).update({ settings_json: JSON.stringify(settings) });
+  return { code, expires_at: new Date(settings[setupCodeExpiresSetting]).toISOString() };
+}
+
+export async function claimDisplaySetupCode(code: string) {
+  const rows = await cpaDb('display_devices').select('device_id', 'settings_json', 'active').where({ active: 1 });
+  const codeHash = hashToken(String(code || ''));
+  for (const row of rows) {
+    const settings = parseSettings(row.settings_json);
+    if (settings[setupCodeHashSetting] !== codeHash || Number(settings[setupCodeExpiresSetting] || 0) < Date.now()) continue;
+    const token = decryptToken(settings[encryptedTokenSetting]);
+    delete settings[setupCodeHashSetting];
+    delete settings[setupCodeExpiresSetting];
+    await cpaDb('display_devices').where({ device_id: row.device_id }).update({ settings_json: JSON.stringify(settings) });
+    return { device_id: row.device_id, token };
+  }
+  return null;
+}
+
 export async function resolveDisplayDevice(token: string, ip = '') {
   const tokenHash = hashToken(token);
   const row = await cpaDb('display_devices')
@@ -177,6 +222,29 @@ export async function resolveDisplayDevice(token: string, ip = '') {
   return device;
 }
 
+export async function getDisplayRuntime(token: string, ip = '') {
+  const device = await resolveDisplayDevice(token, ip);
+  if (!device) return null;
+  return {
+    device_id: device.device_id,
+    remote_settings: normalizeRemoteSettings(device.settings?.remote_settings),
+  };
+}
+
+export async function updateDisplayRuntimeStatus(token: string, body: any, ip = '') {
+  const tokenHash = hashToken(token);
+  const row = await cpaDb('display_devices').select('device_id', 'settings_json').where({ token_hash: tokenHash }).first();
+  if (!row) return null;
+  const settings = parseSettings(row.settings_json);
+  settings[runtimeStatusSetting] = normalizeRuntimeStatus(body);
+  await cpaDb('display_devices').where({ device_id: row.device_id }).update({
+    settings_json: JSON.stringify(settings),
+    last_seen_at: new Date(),
+    last_seen_ip: normalizeIp(ip),
+  });
+  return settings[runtimeStatusSetting];
+}
+
 export function hashToken(token: string) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
@@ -192,6 +260,8 @@ export async function getDevice(deviceId: string | number, exposeToken = false) 
 function normalizeDevice(row: any, exposeToken = false) {
   const settings = parseSettings(row.settings_json);
   const encryptedToken = settings[encryptedTokenSetting];
+  settings.runtime_status = normalizeRuntimeStatus(settings[runtimeStatusSetting]);
+  delete settings[runtimeStatusSetting];
   delete settings[encryptedTokenSetting];
   return {
     ...row,
@@ -246,6 +316,11 @@ function normalizeIp(ip: string) {
   return String(ip || '').replace(/^::ffff:/, '');
 }
 
+function todayRange(): [Date, Date] {
+  const day = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  return [new Date(`${day}T00:00:00`), new Date(`${day}T23:59:59`)];
+}
+
 function parseSettings(value: any) {
   if (!value) return {};
   if (typeof value === 'object') return value;
@@ -254,6 +329,35 @@ function parseSettings(value: any) {
   } catch {
     return {};
   }
+}
+
+export function normalizeRemoteSettings(value: any) {
+  const settings = value && typeof value === 'object' ? value : {};
+  const screenIndex = Math.round(Number(settings.screen_index || 0));
+  const updateUrl = String(settings.update_url || '').trim();
+  return {
+    enabled: settings.enabled === true,
+    fullscreen: settings.fullscreen !== false,
+    start_on_login: settings.start_on_login === true,
+    screen_index: Number.isFinite(screenIndex) ? Math.min(16, Math.max(0, screenIndex)) : 0,
+    update_version: String(settings.update_version || '').trim().slice(0, 40),
+    update_mode: ['immediate', 'on_start', 'scheduled'].includes(String(settings.update_mode)) ? String(settings.update_mode) : 'immediate',
+    update_time: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(settings.update_time || '')) ? String(settings.update_time) : '03:00',
+    update_once: settings.update_once === true,
+    update_url: /^https?:\/\//i.test(updateUrl) ? updateUrl.slice(0, 2000) : '',
+  };
+}
+
+function normalizeRuntimeStatus(value: any) {
+  const status = value && typeof value === 'object' ? value : {};
+  const allowed = ['ready', 'up_to_date', 'waiting', 'downloading', 'installing', 'failed'];
+  return {
+    state: allowed.includes(String(status.state)) ? String(status.state) : 'ready',
+    current_version: String(status.current_version || '').slice(0, 40),
+    target_version: String(status.target_version || '').slice(0, 40),
+    message: String(status.message || '').slice(0, 180),
+    updated_at: String(status.updated_at || new Date().toISOString()).slice(0, 40),
+  };
 }
 
 function normalizeVoiceRate(value: any) {
