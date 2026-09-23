@@ -349,8 +349,8 @@ queueRouter.post('/resume', async (req, res, next) => {
   try {
     const slot = String(req.body.slot_id);
     const current = await Queue.getCurrentQueueCall(slot);
-    if (!current || current.call_status !== 'P') {
-      return res.status(409).json({ status: 'error', message: 'คิวนี้ไม่ได้อยู่ในสถานะพักคิว' });
+    if (!current || !['P', 'W'].includes(current.call_status)) {
+      return res.status(409).json({ status: 'error', message: 'คิวนี้ไม่ได้อยู่ในสถานะไม่พบหรือพักคิว' });
     }
     const resumed = await Queue.cancelQueue(slot);
     const roomId = resumed?.room_id ?? req.body.room_id;
