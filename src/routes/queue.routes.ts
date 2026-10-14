@@ -3,7 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import { dashboardSummary, logQueueAction } from '../models/audit.model.js';
 import * as Queue from '../models/queue.model.js';
-import { getDisplayData, getMultiDisplayData, getRoomListDisplayData } from '../models/display.model.js';
+import { getDisplayData, getMultiDisplayData, getRoomListDisplayData, getScheduledRoomIds } from '../models/display.model.js';
 import { checkQueue } from '../models/check.model.js';
 import * as Media from '../models/media.model.js';
 import * as Audio from '../models/audio.model.js';
@@ -157,6 +157,7 @@ queueRouter.get('/display-devices/preview-sandbox', async (req, res, next) => {
     res.json(await displayDataForDevice({
       device_type: deviceType,
       room_ids: roomIds,
+      skip_schedule_filter: true,
       settings: {
         queue_limit: Number(req.query.queue_limit || 6),
         show_multiple_queues: req.query.show_multiple_queues === '1',
@@ -242,7 +243,10 @@ queueRouter.delete('/display-devices/:deviceId', async (req, res, next) => {
 });
 
 async function displayDataForDevice(device: any) {
-  const roomIds = [...new Set<number>((device.room_ids || []).map(Number).filter(Boolean))];
+  let roomIds = [...new Set<number>((device.room_ids || []).map(Number).filter(Boolean))];
+  if (device.device_type === 'room-grid' && !device.skip_schedule_filter) {
+    roomIds = await getScheduledRoomIds(roomIds);
+  }
   if (device.device_type === 'room-list') {
     return getRoomListDisplayData(roomIds, Number(device.settings?.queue_limit || 6), device.device_type);
   }

@@ -1,5 +1,33 @@
 import { cpaDb, hospitalDb } from '../db.js';
 
+const scheduledRoomCache = new Map<string, { expiresAt: number; roomIds: number[] }>();
+const scheduledRoomCacheMs = 5 * 60 * 1000;
+
+export async function getScheduledRoomIds(roomIds: number[]) {
+  const normalized = [...new Set(roomIds.map(Number).filter(Boolean))].sort((a, b) => a - b);
+  if (!normalized.length) return [];
+  const key = `${today()}:${normalized.join(',')}`;
+  const cached = scheduledRoomCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.roomIds;
+
+  try {
+    const rows = await hospitalDb('opd_qs_slot')
+      .distinct('opd_qs_room_id')
+      .where('schedule_date', today())
+      .whereIn('opd_qs_room_id', normalized)
+      .whereNotNull('doctor_code');
+    const activeRoomIds = rows.map((row: any) => Number(row.opd_qs_room_id)).filter(Boolean);
+    for (const [cacheKey, value] of scheduledRoomCache) {
+      if (cacheKey !== key && value.expiresAt <= Date.now()) scheduledRoomCache.delete(cacheKey);
+    }
+    scheduledRoomCache.set(key, { expiresAt: Date.now() + scheduledRoomCacheMs, roomIds: activeRoomIds });
+    return activeRoomIds;
+  } catch (error) {
+    console.warn('Load scheduled display rooms failed; using fallback rooms:', error);
+    return cached?.roomIds ?? normalized;
+  }
+}
+
 export async function getDisplayData(locationId: string, roomId = '', doctorCode = '') {
   const rooms = await hospitalDb('opd_qs_room')
     .select('opd_qs_room_id', 'opd_qs_room_name', 'opd_qs_room_number', 'current_queue')
