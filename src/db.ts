@@ -12,6 +12,26 @@ export const hospitalDb = knex({
   },
 });
 
+export const pharmacyDb = process.env.PHARMACY_DB_ENABLED === 'true'
+  ? knex({
+      client: 'pg',
+      connection: {
+        host: process.env.PHARMACY_PGHOST,
+        port: Number(process.env.PHARMACY_PGPORT || 5432),
+        database: process.env.PHARMACY_PGDATABASE,
+        user: process.env.PHARMACY_PGUSER,
+        password: process.env.PHARMACY_PGPASSWORD,
+        connectionTimeoutMillis: Number(process.env.PHARMACY_DB_TIMEOUT_MS || 3000),
+      },
+      pool: {
+        min: 0,
+        max: 5,
+        acquireTimeoutMillis: Number(process.env.PHARMACY_DB_TIMEOUT_MS || 3000),
+      },
+      acquireConnectionTimeout: Number(process.env.PHARMACY_DB_TIMEOUT_MS || 3000),
+    })
+  : null;
+
 export const cpaDb = knex({
   client: 'mysql2',
   connection: {

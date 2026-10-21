@@ -1,4 +1,4 @@
-import { cpaDb, hospitalDb } from '../db.js';
+import { cpaDb, hospitalDb, pharmacyDb } from '../db.js';
 
 export async function checkQueue(query: string) {
   const cleanQuery = query.trim();
@@ -10,7 +10,11 @@ export async function checkQueue(query: string) {
       builder.where('o.oqueue', cleanQuery).orWhere('a.queue_slot_number', cleanQuery);
     });
 
-  if (!matchedTargets.length) return { status: 'not_found', message: 'ไม่พบคิว' };
+  if (!matchedTargets.length) {
+    const pharmacyQueues = await findPharmacyQueues({ internalQueue: cleanQuery });
+    if (!pharmacyQueues.length) return { status: 'not_found', message: 'ไม่พบคิว' };
+    return successResult(pharmacyQueues);
+  }
 
   const hns = [...new Set(matchedTargets.map((target: any) => String(target.hn || '')).filter(Boolean))];
   const targets = hns.length
@@ -18,14 +22,80 @@ export async function checkQueue(query: string) {
     : matchedTargets;
   const uniqueTargets = dedupeTargets(targets);
 
+  const pharmacyQueues = await findPharmacyQueues({
+    vns: [...new Set(uniqueTargets.map((target: any) => String(target.vn || '')).filter(Boolean))],
+    targets: uniqueTargets,
+  });
+  if (pharmacyQueues.length) return successResult(pharmacyQueues);
+
   const queues = [];
   for (const target of uniqueTargets) queues.push(await buildQueueResult(target));
 
-  return {
-    status: 'success',
-    data: queues[0],
-    queues,
-  };
+  return successResult(queues);
+}
+
+function successResult(queues: any[]) {
+  return { status: 'success', data: queues[0], queues };
+}
+
+async function findPharmacyQueues(options: { internalQueue?: string; vns?: string[]; targets?: any[] }) {
+  if (!pharmacyDb) return [];
+  const timeoutMs = Number(process.env.PHARMACY_DB_TIMEOUT_MS || 3000);
+  try {
+    const query = pharmacyDb('v_queue_status').withSchema('public')
+      .select('order_number', 'hn', 'vn', 'internal_que', 'pname', 'fname', 'lname', 'state_description', 'finance_status', 'bed_no', 'room_name');
+    if (options.internalQueue) query.where('internal_que', options.internalQueue);
+    else if (options.vns?.length) query.whereIn('vn', options.vns);
+    else return [];
+
+    const rows = await query.orderBy('order_number', 'desc').timeout(timeoutMs, { cancel: true });
+    return pharmacyResults(rows, options.targets || []);
+  } catch (error: any) {
+    console.warn('Pharmacy database unavailable; using HIS queue data', error?.code || error?.message || error);
+    return [];
+  }
+}
+
+function pharmacyResults(rows: any[], targets: any[]) {
+  const targetByVn = new Map(targets.map(target => [String(target.vn || ''), target]));
+  const rowsByVn = new Map<string, any[]>();
+  for (const row of rows) {
+    const key = String(row.vn || row.order_number || '');
+    rowsByVn.set(key, [...(rowsByVn.get(key) || []), row]);
+  }
+
+  return [...rowsByVn.values()].map(group => {
+    const ordered = [...group].sort((a, b) => {
+      const aCancelled = String(a.state_description) === 'ยกเลิกรายการ' ? 1 : 0;
+      const bCancelled = String(b.state_description) === 'ยกเลิกรายการ' ? 1 : 0;
+      return aCancelled - bCancelled || Number(b.order_number || 0) - Number(a.order_number || 0);
+    });
+    const row = ordered[0];
+    const target: any = targetByVn.get(String(row.vn || ''));
+    const fullName = target ? patientName(target) : `${row.pname || ''}${row.fname || ''} ${row.lname || ''}`.trim();
+    return {
+      source: 'pharmacy_robot',
+      queue_no: String(row.internal_que || ''),
+      oqueue: String(row.internal_que || ''),
+      patient_name: maskPatientName(fullName),
+      location_name: row.room_name || 'ห้องยา',
+      room_name: row.room_name || 'ห้องยา',
+      room_number: '',
+      destination_label: 'ห้องยา',
+      call_status: pharmacyCallStatus(row.state_description),
+      service_status: row.state_description || 'อยู่ระหว่างดำเนินการ',
+      finance_status: row.finance_status || '',
+      remaining: 0,
+    };
+  });
+}
+
+function pharmacyCallStatus(state: unknown) {
+  const value = String(state || '');
+  if (value === 'จ่ายยาเสร็จสิ้น') return 'N';
+  if (value === 'กำลังเรียกคิว') return 'C';
+  if (value === 'ยกเลิกรายการ') return 'X';
+  return 'Y';
 }
 
 function targetQuery() {
