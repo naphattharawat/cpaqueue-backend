@@ -21,6 +21,9 @@ export const pharmacyDb = process.env.PHARMACY_DB_ENABLED === 'true'
         database: process.env.PHARMACY_PGDATABASE,
         user: process.env.PHARMACY_PGUSER,
         password: process.env.PHARMACY_PGPASSWORD,
+        ssl: process.env.PHARMACY_PGSSL === 'true'
+          ? { rejectUnauthorized: process.env.PHARMACY_PGSSL_REJECT_UNAUTHORIZED === 'true' }
+          : undefined,
         connectionTimeoutMillis: Number(process.env.PHARMACY_DB_TIMEOUT_MS || 3000),
       },
       pool: {
